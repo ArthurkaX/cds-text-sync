@@ -115,18 +115,19 @@ namespace Cts.Cli
             {
                 throw new CliFailure("visu " + action, "cannot read SVG", error.Message, null, 1);
             }
+            var view = ProjectView(options, work, action);
+            Func<string, Sketch> parse = text => Sketch.Parse(text, view, options.Text("background"), options.Text("scheme"), options.Text("theme"));
             Sketch sketch;
             try
             {
-                sketch = Sketch.Parse(source, ProjectView(options, work, action), options.Text("background"), options.Text("scheme"),
-                                      options.Text("theme"));
+                sketch = parse(source);
             }
             catch (Exception error) when (error is System.Xml.XmlException || error is VisuException)
             {
                 throw new CliFailure("visu " + action, "invalid SVG", error.Message, null, 1);
             }
             if (action == "bind") return Bind(path, source, sketch, options);
-            return Lint(path, source, sketch, options);
+            return Lint(path, source, sketch, options, parse);
         }
 
         static Answer Build(string action, IDictionary<string, object> data)

@@ -231,10 +231,16 @@ namespace Cts.Docs
             var name = Path.GetFileName(Path.GetFullPath(output));
             var staging = Path.Combine(parent, "." + name + ".staging-" + Path.GetRandomFileName());
             var previous = Path.Combine(parent, "." + name + ".previous-" + Path.GetRandomFileName());
+            var moved = false;
+            var done = false;
             try
             {
                 write(staging);
-                if (Directory.Exists(output)) Directory.Move(output, previous);
+                if (Directory.Exists(output))
+                {
+                    Directory.Move(output, previous);
+                    moved = true;
+                }
                 try
                 {
                     Directory.Move(staging, output);
@@ -244,16 +250,23 @@ namespace Cts.Docs
                     // Some mounts let a folder be created but not renamed.
                     Copy(staging, output);
                 }
+                done = true;
             }
             catch
             {
-                if (Directory.Exists(previous) && !Directory.Exists(output)) Directory.Move(previous, output);
+                // A copy that stopped half way gives way to the previous bundle.
+                if (moved)
+                {
+                    if (Directory.Exists(output)) Directory.Delete(output, true);
+                    Directory.Move(previous, output);
+                }
                 throw;
             }
             finally
             {
                 if (Directory.Exists(staging)) Directory.Delete(staging, true);
-                if (Directory.Exists(previous)) Directory.Delete(previous, true);
+                // Not put back, the previous bundle stays beside the output.
+                if (done && Directory.Exists(previous)) Directory.Delete(previous, true);
             }
         }
 

@@ -65,11 +65,7 @@ namespace Cts.Cli
                     TeamGuard.Skip(folder, published, false);
                     GitRepository.Run(folder, "checkout HEAD -- " + ProcessArgs.Quote(published));
                 }
-                IDictionary<string, object> pulled = null;
-                try { pulled = Pull(folder); }
-                catch (InvalidOperationException error) when (!owner) { result["pull_error"] = error.Message; }
-                if (!owner && pulled == null) result["pull_error"] = "the branch has no upstream to pull from";
-                else if (pulled != null) result["pulled"] = pulled;
+                PullInto(folder, owner, result);
                 if (!owner)
                 {
                     PutPublished(folder, published, call.Hello.ProjectPath);
@@ -101,6 +97,21 @@ namespace Cts.Cli
             }
             result["to"] = GitRepository.Position(folder);
             return result;
+        }
+
+        // The pull into *result*: "pulled", or on a colleague's PC the reason
+        // it did not go through as "pull_error", the project reopened anyway.
+        internal static void PullInto(string folder, bool owner, IDictionary<string, object> result)
+        {
+            IDictionary<string, object> pulled;
+            try { pulled = Pull(folder); }
+            catch (InvalidOperationException error) when (!owner)
+            {
+                result["pull_error"] = error.Message;
+                return;
+            }
+            if (pulled != null) result["pulled"] = pulled;
+            else if (!owner) result["pull_error"] = "the branch has no upstream to pull from";
         }
 
         internal static IDictionary<string, object> Pull(string folder)

@@ -274,9 +274,19 @@ namespace Cts.Agent
                     .Invoke(OnlineManager, new object[] { device });
             });
             var shared = FindType("_3S.CoDeSys.Core.Online.IOnlineDevice3");
+            var disconnect = NeedMethod(shared, "SharedDisconnect", new[] { typeof(object) }, "IOnlineDevice3.SharedDisconnect is not present in this IDE");
             Share(NeedMethod(shared, "SharedConnect", new[] { typeof(object) }, "IOnlineDevice3.SharedConnect is not present in this IDE"), online, "connect to");
-            try { return use(online); }
-            finally { Share(shared.GetMethod("SharedDisconnect", new[] { typeof(object) }), online, "close the connection to"); }
+            T result;
+            try { result = use(online); }
+            catch
+            {
+                // The run's own failure is the answer, not one giving the share back.
+                try { Share(disconnect, online, "close the connection to"); }
+                catch (ProtocolException) { }
+                throw;
+            }
+            Share(disconnect, online, "close the connection to");
+            return result;
         }
 
         // The share taken or given back off the UI thread, where the call waits

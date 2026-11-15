@@ -77,7 +77,7 @@ namespace Cts.Cli
                 : PathSafety.SafePath(view, relative);
             if (path == null) throw Refuse(member ? "no POU file found for " + owner : "object path leaves the view");
             relative = path.Substring(Path.GetFullPath(view).TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace(Path.DirectorySeparatorChar, '/');
-            if (member) parent = Path.GetDirectoryName(relative)?.Replace('/', '/') ?? "";
+            if (member) parent = Path.GetDirectoryName(relative) ?? "";
             var destinationDir = Path.GetDirectoryName(path);
             if (!Directory.Exists(destinationDir)) throw Refuse("parent folder does not exist in the view: " + parent);
             if (!member && Directory.GetFileSystemEntries(destinationDir).Any(entry => string.Equals(Path.GetFileNameWithoutExtension(entry), objectName, StringComparison.OrdinalIgnoreCase)))
@@ -89,7 +89,7 @@ namespace Cts.Cli
             {
                 if (!File.Exists(path)) throw Refuse("owner POU file not found: " + path);
                 var old = File.ReadAllText(path, Encoding.UTF8);
-                if (Regex.IsMatch(old, @"\b" + Regex.Escape(objectName) + @"\b", RegexOptions.IgnoreCase)) throw Refuse("object already exists: " + name);
+                if (Taken(old, objectName)) throw Refuse("object already exists: " + name);
                 var ret = o.Text("return_type", "");
                 isInterface = Regex.IsMatch(old, @"^\s*INTERFACE\b", RegexOptions.IgnoreCase);
                 if (isInterface && kind == "action") throw Refuse("an interface has no actions; a function block that implements " + owner + " can have them");
@@ -133,6 +133,23 @@ namespace Cts.Cli
             if (!member && kind == "pou" && Split(body).Value.Length == 0) result["note"] = "The POU was created with an empty body; add statements between the implementation marker and its END line before importing.";
             if (!member && kind == "dut" && o.Text("kind", "") == "enum" && body.Trim().Length == 0) result["note"] = "The empty enum was seeded with one member (Member1 := 0) because an enum with no members is not valid IEC; rename or replace it.";
             return result;
+        }
+
+        //: A member header in a .st file: "METHOD PRIVATE Name".
+        static readonly Regex MemberHeader = new Regex(@"^[ \t]*(?:METHOD|ACTION|PROPERTY|TRANSITION)\b(?:[ \t]+(?:PUBLIC|PRIVATE|PROTECTED|INTERNAL|FINAL|ABSTRACT)\b)*[ \t]+(?<name>[A-Za-z_]\w*)",
+            RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+        // Whether the owner's .st *text* has a member *name* already, or
+        // declares a variable of that name; a mention in a comment, a string, a
+        // call or another object's member is no clash.
+        internal static bool Taken(string text, string name)
+        {
+            var blanked = StText.Blanked(text);
+            var members = MemberHeader.Matches(blanked).Cast<Match>().ToList();
+            if (members.Any(match => string.Equals(match.Groups["name"].Value, name, StringComparison.OrdinalIgnoreCase))) return true;
+            var marker = text.IndexOf(StPragma.ImplementationMarker, StringComparison.Ordinal);
+            var end = Math.Min(marker < 0 ? blanked.Length : marker, members.Count == 0 ? blanked.Length : members[0].Index);
+            return Regex.IsMatch(blanked.Substring(0, end), @"(?:^|[;,])[ \t]*" + Regex.Escape(name) + @"[ \t]*(?:,|:(?!=))", RegexOptions.Multiline | RegexOptions.IgnoreCase);
         }
 
         // The declaration's tables aligned as cts fmt aligns them, so a new

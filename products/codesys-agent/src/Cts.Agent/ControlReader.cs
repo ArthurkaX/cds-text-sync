@@ -16,6 +16,8 @@
 //
 // Nothing here is a vendor type: System.Windows.Forms is the framework's own.
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace Cts.Agent
@@ -40,31 +42,18 @@ namespace Cts.Agent
             return "button";
         }
 
-        //: The control's own caption, which is what the user reads.  Preferred
-        //: over the Win32 text, because it is the value the control renders.
-        public static string Caption(Control control, string fallback)
-        {
-            try
-            {
-                var text = control.Text;
-                if (!string.IsNullOrEmpty(text)) return text;
-            }
-            catch (Exception) { }
-            return fallback;
-        }
-
         //: The caption of the button Enter presses in the dialog behind *hwnd*:
         //: the focused button, else the form's accept button; null when it is
         //: neither or the dialog is not a Windows Forms one.  Two fields read,
-        //: no call into the UI thread.
-        public static string DefaultButton(long hwnd)
+        //: no call into the UI thread: the caption is the one *read* holds.
+        public static string DefaultButton(long hwnd, IEnumerable<LiveControl> read)
         {
             try
             {
                 var form = Resolve(hwnd) as Form;
                 if (form == null) return null;
                 var button = form.ActiveControl as Button ?? form.AcceptButton as Button;
-                return button == null ? null : Caption(button, null);
+                return button == null ? null : read.FirstOrDefault(control => control.Control == button)?.Raw;
             }
             catch (Exception) { return null; }
         }

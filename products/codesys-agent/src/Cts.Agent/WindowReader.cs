@@ -17,7 +17,7 @@ namespace Cts.Agent
     {
         public long Hwnd;
 
-        //: The caption as read (Win32 text, or the control's own Text).
+        //: The caption as read: the window's own text, else its WM_GETTEXT answer.
         public string Raw;
 
         //: The caption as it is shown, with the & mnemonic removed.
@@ -103,10 +103,11 @@ namespace Cts.Agent
                     var role = ModalPolicy.RoleOf(Win32.ClassName(child));
                     if (role == ChildRole.Button)
                     {
-                        var raw = Win32.Text(child);
+                        // Never the control's Text: from this thread it would send
+                        // WM_GETTEXT with no deadline (see Win32).
+                        var caption = Win32.Text(child) ?? Win32.AskedText(child);
                         var control = ControlReader.Resolve(child.ToInt64());
                         var kind = control == null ? "button" : ControlReader.Kind(control);
-                        var caption = control == null ? raw : ControlReader.Caption(control, raw);
                         if (string.IsNullOrEmpty(caption)) return true;
 
                         bool? isChecked = control == null ? (bool?)null : ControlReader.Checked(control);
@@ -136,7 +137,7 @@ namespace Cts.Agent
             live.Window.Text = text;
             live.Window.Options = options.ToArray();
             live.Window.Buttons = buttons.ToArray();
-            live.Window.Default = ControlReader.DefaultButton(hwnd.ToInt64());
+            live.Window.Default = ControlReader.DefaultButton(hwnd.ToInt64(), live.Controls);
         }
     }
 }

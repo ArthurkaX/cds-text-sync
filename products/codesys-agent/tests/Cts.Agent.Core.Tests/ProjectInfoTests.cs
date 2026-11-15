@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace Cts.Agent.Tests
@@ -196,6 +197,29 @@ namespace Cts.Agent.Tests
             Assert.Equal("Line-2-cts", ProjectInfo.FolderName("Line  2"));
             Assert.Equal("ab-cts", ProjectInfo.FolderName("a:b?"));
             Assert.Equal("cts", ProjectInfo.FolderName(" . "));
+        }
+
+        [Fact]
+        public void ARegistryThatCannotBeReadIsNotWrittenOver()
+        {
+            File.WriteAllText(_registry, "{ \"projects\": { \"A\": ");
+
+            var e = Assert.Throws<InvalidOperationException>(() => ProjectInfo.Record("B", Path.Combine(_root, "b"), "B", true, _registry));
+
+            Assert.Contains("fix or delete it", e.Message);
+            Assert.Equal("{ \"projects\": { \"A\": ", File.ReadAllText(_registry));
+        }
+
+        [Fact]
+        public void RecordKeepsTheOtherProjects()
+        {
+            Register("A", Path.Combine(_root, "a"));
+
+            ProjectInfo.Record("B", Path.Combine(_root, "b"), "B", true, _registry);
+
+            var projects = (IDictionary<string, object>)((IDictionary<string, object>)Json.Parse(File.ReadAllText(_registry)))["projects"];
+            Assert.Equal(new[] { "A", "B" }, projects.Keys.OrderBy(id => id, StringComparer.Ordinal));
+            Assert.Empty(Directory.GetFiles(_root, "projects.json.part-*"));
         }
 
         [Fact]

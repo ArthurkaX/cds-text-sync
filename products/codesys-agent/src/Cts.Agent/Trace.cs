@@ -62,7 +62,8 @@ namespace Cts.Agent
                     return answer;
                 });
             }
-            catch (ProtocolException e) when (e.Code == ErrorCodes.Unavailable) { answer["plc_error"] = e.Message; }
+            // ...and with the deny list keeping cts off the PLC's files.
+            catch (ProtocolException e) when (e.Code == ErrorCodes.Unavailable || e.Code == DenyRules.Forbidden) { answer["plc_error"] = e.Message; }
             return answer;
         }
 

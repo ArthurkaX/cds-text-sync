@@ -156,7 +156,7 @@ namespace Cts.Agent
         public static void Record(string id, string folder, string name, bool? owner, string registry = null)
         {
             var path = registry ?? RegistryPath();
-            var data = Read(path) as IDictionary<string, object> ?? new Dictionary<string, object>();
+            var data = ReadForUpdate(path);
             var projects = Field(data, "projects") as IDictionary<string, object> ?? new Dictionary<string, object>();
             var entry = new Dictionary<string, object> { { "folder", Path.GetFullPath(folder) }, { "name", name ?? "" } };
             if (owner ?? IsOwner(id, path)) entry["owner"] = true;
@@ -164,7 +164,25 @@ namespace Cts.Agent
             data["version"] = 1L;
             data["projects"] = projects;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, Json.Pretty(data) + "\n", new UTF8Encoding(false));
+            var part = path + ".part-" + Path.GetRandomFileName();
+            File.WriteAllText(part, Json.Pretty(data) + "\n", new UTF8Encoding(false));
+            SafeFile.Replace(part, path);
+        }
+
+        // The registry to add to: a file there that cannot be read is refused,
+        // not written over with this one project.
+        static IDictionary<string, object> ReadForUpdate(string path)
+        {
+            if (!File.Exists(path)) return new Dictionary<string, object>();
+            try
+            {
+                return Json.Parse(File.ReadAllText(path)) as IDictionary<string, object>
+                    ?? throw new InvalidOperationException(path + " is not a JSON object; fix or delete it");
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is JsonException)
+            {
+                throw new InvalidOperationException(path + " cannot be read (" + error.Message + "); fix or delete it");
+            }
         }
 
         public static bool Claim(string folder, string id)

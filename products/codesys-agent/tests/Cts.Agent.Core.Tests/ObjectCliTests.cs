@@ -50,6 +50,25 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void New_refuses_a_member_name_the_owner_has_and_no_mere_mention()
+        {
+            const string owner = "FUNCTION_BLOCK FB_Test\nVAR\n    xBusy, nCount : INT;\n    fbOther : FB_Other;\nEND_VAR\n// --- implementation ---\n"
+                + "Start(); (* Stop is in a comment *) fbOther.Reset(); s := 'Halt';\nEND_FUNCTION_BLOCK\n\nMETHOD PRIVATE M_Run : BOOL\nVAR_INPUT\n    nLimit : INT;\nEND_VAR\n"
+                + "// --- implementation ---\nEND_METHOD\n\nACTION A_Reset:\nEND_ACTION\n";
+            Assert.True(NewObjectCommand.Taken(owner, "m_run"));
+            Assert.True(NewObjectCommand.Taken(owner, "A_Reset"));
+            Assert.True(NewObjectCommand.Taken(owner, "nCount"));
+            Assert.True(NewObjectCommand.Taken(owner, "xBusy"));
+            // The call written first, the method made after it.
+            Assert.False(NewObjectCommand.Taken(owner, "Start"));
+            Assert.False(NewObjectCommand.Taken(owner, "Stop"));
+            Assert.False(NewObjectCommand.Taken(owner, "Reset"));
+            Assert.False(NewObjectCommand.Taken(owner, "Halt"));
+            // A method's own input is no member of the function block.
+            Assert.False(NewObjectCommand.Taken(owner, "nLimit"));
+        }
+
+        [Fact]
         public void New_puts_a_shared_function_at_the_project_root_with_its_inputs_declared()
         {
             var root = Path.Combine(Path.GetTempPath(), "cts-new-root-test-" + Guid.NewGuid().ToString("N"));

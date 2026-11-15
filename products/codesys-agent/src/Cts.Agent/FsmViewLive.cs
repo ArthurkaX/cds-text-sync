@@ -87,7 +87,7 @@ namespace Cts.Agent
             {
                 string value = null, failure;
                 try { value = FsmMap.LiveValue(_read(new[] { path }), out failure); }
-                catch (ProtocolException e) { failure = e.Message; }
+                catch (Exception e) { failure = e.Message; }
                 Later(() => { _reading = false; Seen(row, path, value, failure); });
             });
         }

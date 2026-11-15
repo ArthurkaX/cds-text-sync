@@ -1,162 +1,199 @@
-# Architecture v2: a thin in-process agent
+# Architecture: cts.exe and the in-IDE agent
 
-Status: the C# agent is the CLI command transport and answers every IDE command itself; the IronPython daemon is gone.
+Status: current. `cts.exe` runs every command in its own process; a C# agent
+loaded into the CODESYS process gives it the IDE over a named pipe and carries
+the in-IDE windows. Both are built on one shared library, `Cts.Agent.Core`.
+The IronPython daemon of earlier releases is gone.
 
-## Why change
+## Assemblies
 
-`cts` commands connect to the in-IDE C# agent, which runs them on the IDE UI
-thread. This replaces the earlier IronPython-polled client pipe, which had several limits:
+Source: `products/codesys-agent/src`.
 
-- the IDE pulls the CLI; the IDE can never tell the CLI anything (no events, no
-  "the PLC just went online", no variable change push);
-- every command pays an IronPython round trip, and the polling interval is a
-  floor on latency;
-- the script runs under the scripting engine, which owns the session (the
-  "Executing script... CANCEL" state, the one-daemon workaround, the timer
-  trick);
-- the scripting API is a wrapper over the core. We reach the core only through
-  that wrapper.
+| Assembly | Target | Runs in | Holds |
+|---|---|---|---|
+| `Cts.Agent.Core.dll` | `netstandard2.0`, `net48` | `cts.exe` and the IDE | every `cts` command (namespace `Cts.Cli`), export/import/compare planning, git, the analysis rules, visu, docs and diagrams, trend, FSM detection and layout, the formatter, the guides (embedded resources); and what both processes share: the wire protocol, router, sessions, event bus, the UI-thread call with a deadline, the modal policy, the deny list, the quick window's menu and review models |
+| `cts.exe` (`Cts.Cli`) | `net48` | its own process | `Program.cs` only: console encoding and pipe discovery (`PipeHost`); the rest is Core |
+| `Cts.Agent.dll` | `net48`, AnyCPU | the IDE process | the `Ide` reflection facade over the CODESYS API, the pipe server, IDE events, the modal watcher and dialog answering, the in-IDE windows, `CtsRunner` |
 
-A live probe (kept outside this repo until now) showed a different shape works in
-both 32-bit and 64-bit CODESYS with **one AnyCPU net48 DLL**:
+Core references neither a CODESYS assembly nor `System.Windows.Forms`;
+`Cts.Agent` is the only assembly that uses either.
 
-- a script loads the DLL and returns; the DLL keeps running (own threads, a pipe
-  *server* inside the IDE);
-- `IEngine.InvokeInPrimaryThread` marshals any call onto the UI thread;
-- `IOnlineManager` login/logout/state events can be subscribed to from the DLL;
-- core services are reachable by reflection from
-  `ComponentManager.Singleton.InstanceFactory.GetSystemInstance(name)`, so the
-  DLL has no compile-time reference to a CODESYS assembly and does not care which
-  product or version loaded it.
+## cts.exe
 
-## Shape
+`Program.Main` sets up the output encoding and calls `CliRun.Run` with the
+command `CliCommands.Find` picked and a `PipeHost`, which lists the
+`\\.\pipe\cts-agent-<pid>` pipes and opens one. Parsing, help, choosing the
+agent, the command itself, the verdict line and `--json` are Core code running
+in the `cts.exe` process. Each command is a `CliCommand`:
 
-```
- cts.exe (outside, net48)                   IDE process (CODESYS)
- ------------------------                   ---------------------------------
- command parsing, guides,   JSON lines      agent DLL (C#, net48, AnyCPU)
- projection, diff, fmt,     over a named    - pipe server  (one per IDE pid)
- static analysis, LLM-      pipe            - dispatcher   (-> primary thread)
- facing output              <------------>  - reflection facade (Ide, Online)
-                            requests +      - event source (online, commands)
-                            events
-```
+- A **local** command (`LocalExecute`: analysis, docs and diagrams, visu,
+  trend, git and merge, install, `project open --launch`, ...) works on the
+  folder and never opens a pipe.
+- Any other picks an agent (`AgentChoice`: the one `--target` names, else the
+  only one, else the one whose sync folder holds the work folder;
+  `CTS_IDE_PID` narrows it to one IDE), reads its `hello`, and runs `Execute`
+  with a `CliCall`. `CliCall.Call` sends one request over the
+  `AgentConnection` within the command's budget (sized from the hello's
+  `timeout_profile`) and turns an error reply into the command's failure.
+- A command that writes a sync folder takes that folder's lock (`FolderLock`)
+  in `cts.exe`; two commands on one folder run one after the other.
 
-Principles:
-
-1. **The agent is thin.** It exposes primitives (read/write variables, online
-   state, login/logout/download, project and object access, events). Policy,
-   formatting, guards and everything a user can read in `--help` stay in `cts`.
-2. **No compile-time dependency on CODESYS.** Core types are found by name at
-   runtime. A missing type or member is an error reply naming it, never a crash.
-3. **One agent per IDE process.** An AppDomain anchor (as in the probe) replaces a
-   previous instance, from any build of the DLL, when the loader runs again.
-4. **Everything runs on the UI thread** unless it is pure transport.
-   `InvokeInPrimaryThread` is the only door to the core. Long operations report
-   progress as events instead of holding the pipe silently.
-5. **The user-facing contract does not move**: `cts` commands, flags, `--json`
-   shapes, `cts guide` topics and the on-disk projection format stay as they are.
-   v2 is a change of plumbing.
+Export, import and compare are planned in `cts.exe`. Export asks the agent for
+the IDE's snapshot (`project.export`, written per object with
+`IObjectManager2.ExportObject`), then writes the view and advances cts'
+private base itself. Import reads the disk, the base and the IDE's objects
+(`objects.export`, `objects.texts`, `project.tree`), plans in `ImportPlanner`,
+and applies the plan through the agent's primitives (`objects.settext`,
+`objects.replace`, `objects.create`, `objects.import`, `objects.delete`,
+`objects.move`, `objects.rename`, `objects.setfield`, `project.save`). Git runs
+as a child process of `cts.exe` (`GitRun`).
 
 ## Transport
 
-- Named pipe `\\.\pipe\cts-agent-<pid>`, **the agent is the server**. The CLI
-  lists `cts-agent-*` pipes and asks each for a `hello` (pid, product, version,
-  project path, agent version).
-- Access: pipe DACL limited to the current user.
-- Framing: one UTF-8 JSON object per line, in both directions.
-  - request: `{"id": "...", "method": "...", "params": {...}}`
-  - reply: `{"id": "...", "ok": true, "result": {...}}` or
-    `{"id": "...", "ok": false, "error": {"code": "...", "message": "..."}}`
-  - event (server push, no `id`): `{"event": "online.state", "data": {...}}`
-  - a client may subscribe to events on a connection: `{"method": "subscribe", ...}`.
-- Protocol version in `hello`; the CLI refuses an agent whose major version it
-  does not know and says which side to update.
-- The reply envelope (the verdict line, ISO-8601 UTC timestamps, the
-  `ide-<pid> · <project>` line) is built by the CLI from the agent's replies.
+- Named pipe `\\.\pipe\cts-agent-<pid>`, one per IDE; **the agent is the
+  server**. The pipe's ACL admits only the user that runs the IDE. Overlapped
+  I/O, so a pushed event is not held behind a pending read.
+- One UTF-8 JSON object per line, in both directions (`Protocol.cs`):
+  - request `{"id", "method", "params"}`
+  - reply `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error": {"code", "message", "data"?}}`
+  - event `{"event", "seq", "time", "data"}`, pushed only to a connection that
+    sent `subscribe`; a writer thread with a bounded queue sends them, so a
+    client that stops reading never blocks the IDE.
+- `hello` carries the protocol version, the agent's build, the pid, the
+  product, the open project and the timeout profile. `cts.exe` refuses an
+  agent whose protocol major differs, and warns when the agent is another
+  build than itself.
+- Each request names the project its command began with; the agent refuses
+  (`project_changed`) when the IDE has another one open by then.
 
-## What the agent does and what `cts` does
+## The agent
 
-| Area | v2 owner | Notes |
-|---|---|---|
-| ping, state, hello, context | agent | first vertical slice |
-| online state, login/logout, download, start/stop | agent | direct `IOnlineManager`/`IOnlineApplication` |
-| variable read/write/watch | agent | push on change instead of polling; write confirm logic stays in `cts` |
-| online events (login, logout, state, download) | agent | forwarded as events |
-| IDE command events (`ICommandManager` executing/executed) | agent | lets `cts` see user actions in the IDE |
-| project export/import, object tree, POU edit | agent | `objects.*`, `project.*` |
-| build, messages, PLC files and log, boot application | agent | |
-| JSON test plans (`cts verify --with-test`) | agent | `test.run`, one agent call per step |
-| ST tests in simulation (`cts test`) | agent | `test.app`: activate, download, read `TestResult` and the run's log, switch back |
-| formatting, diff, projection, analysis, guides | `cts` | unchanged |
+**Start.** `cts install` writes the menu stub `cds-text-sync.py` into the
+ScriptDir (and the same entry as a Script Command for a toolbar button). The
+stub loads the agent DLLs and calls `AgentHost.Menu()`, which starts the agent
+unless one runs in this IDE and opens the quick window. `AgentHost.Start`
+replaces an agent of any build it finds under the AppDomain anchor. The script
+returns at once; the agent keeps running on its own threads (online and object
+events, modal watcher, pipe server, quick window, mirror refresh), so the IDE
+is not held in "Executing script". `cts project open --launch` starts the IDE
+with `--runscript=<stub>` and waits until its agent answers.
 
-## Start and stop
+**Reflection facade.** `Ide` (a partial class over `Ide.cs`, `IdeManager.cs`,
+`IdeReflection.cs`, `Objects.cs`, `Export.cs` and others) finds every CODESYS
+type by name at run time; core services come from the component manager's
+system instances. The DLL has no compile-time reference to a CODESYS assembly,
+so one AnyCPU build runs in 32-bit and 64-bit IDEs, and a member a version
+lacks is an `unavailable` reply naming it, not a crash.
 
-- **One action brings up the agent.** Running `cds-text-sync` from the menu
-  loads the agent DLLs and calls `AgentHost.Menu()`, which starts the agent
-  unless one runs and opens the quick window. A running agent is *kept*, not
-  replaced, so a second run does not drop its watches. `cts status` is the
-  agent's (`project.status`). `cts install` writes that menu entry and deploys the agent (`Cts.Agent.Core.dll`, `Cts.Agent.dll`) and `cts.exe`
-  into `<ScriptDir>\cds-text-sync\agent` from beside the `cts.exe` that runs it
-  (the download's `dist`) or from the build tree it was built in, so there is no hand-copied DLL step.
-- A tiny loader script in the user's `ScriptDir` loads the DLL, calls
-  `AgentHost.Menu()` and returns. After that there is no script running, so the
-  IDE is not held in "Executing script". That loader is `cds-text-sync.py`,
-  which `cts install` writes.
-- `cts` can start the IDE itself with `--runscript=<loader>` (not `--noUI`: the
-  process exits when the script returns), so the user presses
-  nothing. `cts project open --launch` does exactly that, with the installed
-  `cds-text-sync.py` stub as the loader: one command on a fresh machine leaves
-  the IDE and the agent ready, and it waits for the agent before it answers.
-- **The agent sees the dialogs without the UI thread.**
-  `dialog.probe` answers which modal dialogs are up, so `cts` refuses a command
-  at once while one is open instead of waiting out the timeout.
-- **A dialog is read and answered, not just reported** (`dialog.answer`, t71). The
-  agent resolves the real Windows Forms control behind each caption with
-  `Control.FromHandle` — the only way to tell a radio button from a push button on
-  a CODESYS dialog — so the snapshot carries each option's kind and checked state,
-  and the answer path can set them. The caller names options and a button; the
-  agent re-reads the dialog live, refuses (clicking nothing) when a name is not
-  there or the dialog's fingerprint has changed, sets the options, verifies them,
-  *posts* the press to the UI thread's queue and then watches the window close, so
-  a button that opens the next dialog cannot trap the call inside that dialog's
-  modal loop. The hwnd is deliberately not the identity: `ModalFingerprint` hashes
-  what the dialog *says*, which survives a re-created window and an IDE restart.
-  (measured live against CODESYS's own login prompt.)
-- A real `.plugin` that the IDE loads on its own is a possible later step; it is
-  not needed for v2 and its requirements (signing, profile cache, per-version
-  binding) are not yet known.
-- UI entry points: one `ScriptDir` script, `cds-text-sync.py`, that loads the
-  agent, also registered as a Script Command for a toolbar button; the agent's
-  quick window (Alt+Q, a keyboard hook on the IDE's UI thread) holds the rest.
-  Adding commands to the IDE menu at runtime is not possible through
-  `ICommandManager`.
+**Methods** (`Router.Register`): `hello`, `ping`, `state`, `methods`,
+`subscribe`; `objects.*` and `project.*` (tree, texts, export, edits, open,
+close, save, devices, sync folder, simulation, credentials, permissions);
+`app.*` (build, login, logout, download, start, stop, reset, boot application,
+CRC, scan); `vars.read`, `vars.write`; `plc.*` (files, log); `messages.read`;
+`trace.*`; `dialog.probe`, `dialog.answer`; `journal.take`; `test.run` (JSON
+test plans, each step one of the agent's own methods) and `test.app` (ST tests
+in simulation); `widget.drive`, `widget.snapshot` (the quick window driven by
+a test); `dev.*` only when enabled.
 
-## Build, layout, tests
+**Events.** `IOnlineManager` events become `online.*` events, the modal
+watcher's `ui.modal.opened` / `ui.modal.closed`. `IObjectManager` events feed
+the object journal: after each command `cts` names what the IDE changed outside
+it since the last one (`journal.take`).
 
-- `products/codesys-agent/`
-  - `Cts.Agent.Core` — `netstandard2.0` (tests) and `net48`: protocol, framing,
-    request queue, event bus, error model, and the `cts` commands that
-    `cts.exe` and the agent share. No CODESYS names. Tested on Linux with
-    `dotnet test`.
-  - `Cts.Cli` — `cts.exe`, `net48`: the command line over `Cts.Agent.Core`.
-  - `Cts.Agent` — `net48`, AnyCPU: pipe server, reflection facade, loader entry
-    point. Builds on Linux (`Microsoft.NETFramework.ReferenceAssemblies`), runs
-    only inside a Windows IDE.
-  - `tests/` — protocol/transport tests; a fake core assembly that declares the
-    same interface names lets the reflection facade be tested without an IDE.
-  - live checks on a Windows machine per product (`tests/live/run.py`).
-- The loader script ships as `cds-text-sync.py`; `cts install` writes it and
-  the agent into `ScriptDir`.
+**Dialogs.** The modal watcher polls the IDE process's top-level windows every
+500 ms. While a modal dialog is up, the router's gate answers only the
+UI-free methods and refuses the rest with `dialog_blocked`, after one fresh
+look so a dialog just closed does not refuse the next command.
+`dialog.answer` resolves the real Windows Forms controls behind a dialog
+(`Control.FromHandle`), checks the caller's names against a live read and the
+dialog's fingerprint (what it says, not its hwnd), sets the options, verifies
+them, posts the press and watches the window close.
+
+**Policy the agent enforces.** Whatever client sends the request:
+
+- the deny list (`DenyRules`, from the sync folder's `cds-text-sync.json`;
+  an unreadable file refuses every gated method). Each write method has a
+  fixed key (`DenyRules.KeyFor`), so a client cannot route a write through a
+  weaker one; the handler checks it before it edits;
+- no edits while any application of the project is logged in;
+- the project a request began with (above).
+
+Everything else a command decides (what to import, how to merge, what to
+print) is decided in `cts.exe`.
+
+## In-IDE windows
+
+The windows are product features, not a debugging aid: the quick window
+(Alt+Q by default, a keyboard hook on the IDE's UI thread, not a global hotkey),
+the conflict window, the format review, the FSM view (live while logged in),
+the analysis window and the activity window. Except the activity window (the
+agent's own log) and the permission switches (the agent rewrites the deny list
+with `DenyRules.Toggle`), each action is a `cts.exe` run: `CtsRunner` starts
+the `cts.exe` deployed beside the agent, off the UI thread, with `CTS_IDE_PID`
+so it targets this IDE and `CTS_PROGRESS` so it names its stages. The tool
+windows draw what `cts fmt --json`, `cts fsm --layout --json` or `cts analyze`
+answer, and apply through `cts` as well. `MirrorRefresh` runs `cts compare`
+while nobody works, so the quick window opens on a current picture. The logic
+stays in `cts`, and a person sees the verdict line a script reads.
+
+## Threads
+
+From the code's comments, the places that are threading-sensitive:
+
+- **UI thread.** Every call into the core goes through `Ide.OnUi` and
+  `UiCall.Run`: it posts with `IEngine.InvokeInPrimaryThread` in asynchronous
+  mode and waits with a deadline. `busy` means it never started and never
+  will (an abandoned call does nothing when the UI thread reaches it),
+  `dialog_blocked` that a modal dialog was up, `timeout` that it started and
+  did not finish in time.
+- **Online events** (`OnlineEvents`) are raised inside the IDE's own
+  operations, often off the UI thread with its locks held: a handler reads the
+  arguments and queues, and never calls back into the IDE; the optional
+  application state is asked later from a pool thread, with a deadline.
+- **Object events** (`ObjectEvents`) feed the journal; a handler reads the
+  object's kind and, on an object's first change, its text before the edit.
+- **Window reads** (`ModalWatcher`, `Win32`) never send a message to the UI
+  thread (`InternalGetWindowText`, not `GetWindowText`), so they work while it
+  is inside a modal loop; the one message is a posted click, never a sent one.
+- **Device services** (`PlcFiles.OnDevice`): Begin on the UI thread, wait off
+  it, End on it again; the services complete through the UI thread, so an End
+  waiting there never returns. The shared device connection is taken off the
+  UI thread.
+
+## Why these boundaries
+
+- **One Core, two hosts.** `cts.exe` and the agent share the protocol, the
+  deny list and the menu and review models from one assembly, so they cannot
+  drift apart within a build. Without CODESYS or Windows Forms references it is
+  tested on `net10.0` (`tests/Cts.Agent.Core.Tests`, xunit) with no IDE; the
+  commands run there against a fake agent host.
+- **Commands in `cts.exe`.** A command is the same whether a script or the
+  quick window runs it. `net48`, so a PC that runs CODESYS needs no extra
+  runtime.
+- **The agent holds what needs the IDE process**: reflection over the core,
+  the UI thread, the events, the dialogs' controls, and the windows a person
+  uses there.
+- **Enforcement in the agent**: the pipe is the door to the IDE, so the deny
+  list and the online refusal hold for any client of it.
+
+## Deploy and test
+
+- `cts install` copies `Cts.Agent.Core.dll`, `Cts.Agent.dll`, `cts.exe` and
+  `cts.exe.config` into `<ScriptDir>\cds-text-sync\agent`, from beside the
+  `cts.exe` that runs it or from its build tree. `cts.exe` goes with the agent
+  so the quick window runs the same build.
+- `Cts.Agent` has no unit tests: `tools/ApiCheck` compares the CODESYS types
+  and members it names with an installation's assemblies, and
+  `tests/live/run.py` runs live scenarios against an IDE.
 
 ## Risks
 
-- Reflection against a moving API: mitigated by the live checks and by clear
-  error replies that name the missing member.
-- A bug in the agent is a bug inside the IDE process. Every dispatched call is
-  wrapped, nothing is allowed to escape on the UI thread, and `Stop` must always
-  work.
-- A deadlock on the UI thread: calls from the pipe thread are queued with a
-  timeout and the reply says which method was running.
-- Antivirus or policy blocking an unsigned DLL load from `ScriptDir`: to be
-  checked on a locked-down machine before release.
+- Reflection against a moving API: mitigated by `ApiCheck`, the live checks
+  and error replies that name the missing member.
+- A bug in the agent is a bug inside the IDE process: every dispatched call is
+  wrapped, a handler fault becomes an `internal` reply, and `Stop` stops each
+  part whether or not another failed.
+- A stuck UI thread: the deadline and the abandoned-call rule above; the reply
+  says which method was running.
+- An unsigned DLL loaded from the ScriptDir may be blocked by antivirus or
+  policy on a locked-down machine.

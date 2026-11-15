@@ -102,6 +102,38 @@ namespace Cts.Agent.Tests
             Git("merge --abort");
         }
 
+        [Fact]
+        public void AColleaguesPullConflictKeepsItsReason()
+        {
+            var remote = Remote();
+            Git("remote add origin " + ProcessArgs.Quote(remote));
+            Git("push -u origin main");
+            ClonePeer(remote);
+            Peer("checkout main");
+            File.WriteAllText(Path.Combine(_other, "one.txt"), "team");
+            Peer("commit -q -am team");
+            Peer("push origin main");
+            File.WriteAllText(Path.Combine(_root, "one.txt"), "local");
+            Git("commit -q -am local");
+            var result = new Dictionary<string, object>();
+
+            ProjectUpdateCommand.PullInto(_root, false, result);
+
+            Assert.Contains("one.txt", Convert.ToString(result["pull_error"]));
+            Assert.False(result.ContainsKey("pulled"));
+            Git("merge --abort");
+        }
+
+        [Fact]
+        public void AColleaguesBranchWithoutAnUpstreamSaysSo()
+        {
+            var result = new Dictionary<string, object>();
+
+            ProjectUpdateCommand.PullInto(_root, false, result);
+
+            Assert.Equal("the branch has no upstream to pull from", result["pull_error"]);
+        }
+
         CliCall Call(bool online)
         {
             var options = CliOptions.Parse(new[] { "project", "update" }, null, _command);

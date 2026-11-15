@@ -24,7 +24,9 @@ namespace Cts.Agent
         static readonly Regex Url = new Regex(@"\b[a-z][a-z0-9+.-]*://[^\s""'<>]+|\b[\w.-]+@[\w.-]+:[^\s""'<>]+", RegexOptions.IgnoreCase);
         static readonly Regex Email = new Regex(@"\b[\w.+-]+@[\w-]+(\.[\w-]+)+\b");
         static readonly Regex QuotedPath = new Regex(@"(?<q>[""'])(?:[A-Za-z]:|\\\\)[\\/][^""'\r\n]*\k<q>");
-        static readonly Regex Path = new Regex(@"(?:\b[A-Za-z]:|\\\\[^\\\s]+)[\\/][^\s""'<>|*?]*");
+        //: A space goes on with the path when a separator follows on the line
+        //: before any colon (the next path's drive): C:\Users\Jo Ann Smith\x.log.
+        static readonly Regex Path = new Regex(@"(?:\b[A-Za-z]:|\\\\[^\\\s]+)[\\/](?:[^\s""'<>|*?]| (?=[^""'<>|*?:\r\n\\/]*[\\/]))*");
         static readonly Regex File = new Regex(@"[\w.\-/\\]*[\w\-]\.(?:st|xml|project|projectarchive|library|compiled-library|exp)\b", RegexOptions.IgnoreCase);
         //: An IPv4 address; one of a single digit first (3.5.22.40) is a version.
         static readonly Regex Address = new Regex(@"\b(?:[1-9]\d|1\d\d|2[0-5]\d)(?:\.\d{1,3}){3}(?::\d+)?\b");
@@ -46,8 +48,9 @@ namespace Cts.Agent
                 if (name.Length < 3 || Common.Contains(name) || _kinds.ContainsKey(name)) continue;
                 _kinds[name] = pair.Value;
             }
-            _names = _kinds.Count == 0 ? null : new Regex(@"(?<![\w])(?:" + string.Join("|",
-                _kinds.Keys.OrderByDescending(name => name.Length).Select(Regex.Escape)) + @")(?![\w])", RegexOptions.IgnoreCase);
+            // A placeholder put in before them (<file>) is no name.
+            _names = _kinds.Count == 0 ? null : new Regex(@"(?<![\w<])(?:" + string.Join("|",
+                _kinds.Keys.OrderByDescending(name => name.Length).Select(Regex.Escape)) + @")(?![\w>])", RegexOptions.IgnoreCase);
         }
 
         public string Text(string text)

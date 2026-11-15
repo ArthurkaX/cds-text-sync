@@ -63,6 +63,20 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void APathWithSpacesIsHiddenWhole()
+        {
+            var text = Known().Text("open failed: C:\\Users\\Jo Ann Smith\\AppData\\Local\\cts\\agent.log locked, see D:\\x");
+            Assert.Equal("open failed: <path> locked, see <path>", text);
+        }
+
+        [Fact]
+        public void AnObjectNamedAsAPlaceholderLeavesThePlaceholder()
+        {
+            var redaction = new Redaction(new Dictionary<string, string> { { "file", "object" }, { "path", "object" } });
+            Assert.Equal("<file> at <path> then <object>", redaction.Text("Main.st at C:\\work\\a then file"));
+        }
+
+        [Fact]
         public void FromTheMenuTheLastFailedRunIsTheOneAndEmptySectionsAreLeftOut()
         {
             var runs = new List<WidgetRun> { Run(new[] { "merge", "x", "--preview" }, 1, "error merge cause=refused"), Run(new[] { "compare" }, 0, "ok compare") };
