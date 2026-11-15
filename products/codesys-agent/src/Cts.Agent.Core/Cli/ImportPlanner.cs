@@ -20,6 +20,8 @@ namespace Cts.Cli
             string _every;
             bool _tool;
             HashSet<string> _addedKeys;
+            //: The objects both changed that a --take settles whole, not merged: the IDE holds an earlier sync's text.
+            HashSet<CompareRecord> _unmerged;
             List<string> _folderCreateKeys;
 
             internal ImportPlanner(CliCall call, bool syncing, bool settling, ComparePlan plan)
@@ -52,6 +54,7 @@ namespace Cts.Cli
             {
                 if (_work.Merged.Count > 0) _work.Data["merges"] = _work.Merged;
                 if (_work.Conflicts.Count > 0) { _work.Data["conflicts"] = _work.Conflicts; _work.Data["conflict_next"] = ConflictNext(_call); }
+                if (_work.IdeOlderLeft.Count > 0) _work.Data["ide_older"] = _work.IdeOlderLeft.Select(record => record.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 MatchRenames();
                 PlanFolderDeletes();
                 // What --force or an emptied folder deletes in the IDE, which no row of the plan names as deleted.
@@ -144,16 +147,27 @@ namespace Cts.Cli
                         record.Category = "added";
                 _work.Stamps = ViewStamps.Take(_work.View);
                 _work.Parsed = StViewReader.Read(_work.View);
-                _work.StRecords = _work.Changed.Where(record => record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)).ToList();
+                // An object both changed whose IDE text an earlier sync recorded: the IDE went
+                // back to it (a project file saved before the last import, reopened) and made no
+                // edit, so a merge would take the lines it lost out of the folder too. It is left
+                // as it is on both sides, unless --force gives it the disk's text or --take names
+                // its side, which it takes whole, as a conflict's.
+                var older = _work.HasBase && !_call.Options.Params.ContainsKey("force")
+                    ? IdeOlder(_work, _work.Changed.Where(record => record.IdeChanged)) : new List<CompareRecord>();
+                _work.IdeOlderLeft = older.Where(record => Take(record) == null).ToList();
+                _unmerged = new HashSet<CompareRecord>(older.Except(_work.IdeOlderLeft));
+                foreach (var record in _unmerged) record.Merged = null;
+                var planned = _work.Changed.Except(_work.IdeOlderLeft).ToList();
+                _work.StRecords = planned.Where(record => record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)).ToList();
                 _work.FolderRecords = _work.Changed.Where(record => IsFolderRecord(record) && !NewContainer(record)).ToList();
                 _work.Deleted = _work.StRecords.Where(record => record.Category == "deleted").OrderByDescending(record => RecordDepth(record, _work.Parsed)).ToList();
                 var tree = _call.Call("project.tree", new Dictionary<string, object>());
                 _work.IdeNodes = TreeObjects(tree, out _work.IdePathByGuid);
                 _work.IdeByPath = _work.IdeNodes.ToDictionary(pair => pair.Key, pair => pair.Value.Guid, StringComparer.OrdinalIgnoreCase);
-                _work.NativeRecords = _work.Changed.Where(record => (!IsFolderRecord(record) || NewContainer(record))
+                _work.NativeRecords = planned.Where(record => (!IsFolderRecord(record) || NewContainer(record))
                     && !record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)
                     && record.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).ToList();
-                _work.CsvRecords = _work.Changed.Where(record => record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)).ToList();
+                _work.CsvRecords = planned.Where(record => record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)).ToList();
                 foreach (var record in _work.NativeRecords.Where(record => record.Category == "added"))
                 {
                     var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
@@ -293,7 +307,7 @@ namespace Cts.Cli
                         var ideItem = At(_work.IdeObjects, key);
                         var baseItem = At(_baseObjects, key);
                         if (ideItem == null || baseItem == null) return Refused(_call, _work.Data, "cannot identify merge text for " + record.Name);
-                        var mergedItem = MergeObject(item, baseItem, ideItem);
+                        var mergedItem = _unmerged.Contains(record) ? null : MergeObject(item, baseItem, ideItem);
                         var take = Take(record);
                         if (mergedItem == null && _tool && take == null) mergedItem = SideBySide(item, ideItem);
                         if (mergedItem == null && take == "ide")

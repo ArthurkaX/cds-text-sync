@@ -564,11 +564,14 @@ namespace Cts.Cli
                 if (ideKept.Count > 0) output["ide_changed"] = ideKept;
                 // One the IDE changed or deleted leaves it with other code than the folder's, so the run is
                 // partial; one only the IDE has does not, the folder takes it when cts sync runs.
-                var left = _work.Changed.Where(record => record.Category == "ide_changed" && !ComparePlanner.IdeAdded(record)).ToList();
-                if (ideKept.Count > 0 && left.Count > 0)
+                // So does one both changed that the planner left, its IDE text an earlier sync's.
+                var left = ideKept.Count == 0 ? new List<CompareRecord>()
+                    : _work.Changed.Where(record => record.Category == "ide_changed" && !ComparePlanner.IdeAdded(record)).ToList();
+                var older = IdeOlder(_work, left).Concat(_work.IdeOlderLeft).Select(record => record.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                left.AddRange(_work.IdeOlderLeft);
+                if (left.Count > 0)
                 {
                     output["ide_left"] = left.Select(record => record.Answer()).ToList();
-                    var older = IdeOlder(left);
                     if (older.Count > 0) output["ide_older"] = older;
                     output["partial"] = true;
                 }
@@ -599,52 +602,6 @@ namespace Cts.Cli
                     catch (CliFailure error) when (error.Declined) { output["save_error"] = error.Message; }
                 }
                 return output;
-            }
-
-            // The names of the objects of *left* whose IDE text is one an earlier
-            // sync recorded on refs/cts/base: the IDE went back to it, as a project
-            // file saved before the last import does when opened again, rather
-            // than edited it. A deleted object has no text to tell by.
-            List<string> IdeOlder(IList<CompareRecord> left)
-            {
-                var older = new List<string>();
-                var texts = left.Where(record => !record.IdeDeleted && (record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)
-                    ? At(_work.IdeObjects, record.ObjectPath) != null : _work.IdeFiles != null && _work.IdeFiles.ContainsKey(record.Path))).ToList();
-                if (texts.Count == 0) return older;
-                var viewRelative = ExportCommand.Relative(_work.Folder, _work.View);
-                var prefix = viewRelative == "." ? "" : viewRelative.TrimEnd('/') + "/";
-                var log = GitRun.In(_work.Folder, "log -z --root --raw --no-abbrev --no-renames --format= " + SyncBase.BaseRef + " -- "
-                    + string.Join(" ", texts.Select(record => ProcessArgs.Quote(prefix + record.Path)).Distinct()));
-                if (log.ExitCode != 0) return older;
-                // Each change is ":MODE MODE OLD NEW STATUS" and its path, both ended by a NUL.
-                var versions = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-                var fields = log.Output.Split('\0');
-                for (var at = 0; at + 1 < fields.Length; at++)
-                {
-                    var change = fields[at].TrimStart('\n').Split(' ');
-                    if (change.Length < 4 || !change[0].StartsWith(":", StringComparison.Ordinal) || !fields[++at].StartsWith(prefix, StringComparison.Ordinal)) continue;
-                    var path = fields[at].Substring(prefix.Length);
-                    if (!versions.ContainsKey(path)) versions[path] = new HashSet<string>(StringComparer.Ordinal);
-                    foreach (var blob in new[] { change[2], change[3] }.Where(blob => blob.Trim('0').Length > 0)) versions[path].Add(blob);
-                }
-                if (versions.Count == 0) return older;
-                using (var blobs = new GitTreeViewFiles(_work.Folder, versions.Values.SelectMany(ids => ids).Distinct()))
-                {
-                    var read = blobs.ReadMany(blobs.Paths);
-                    foreach (var record in texts)
-                        if (versions.TryGetValue(record.Path, out var ids) && ids.Any(id => read[id] != null && IdeHad(record, read[id]))) older.Add(record.Name);
-                }
-                return older.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            }
-
-            // Does the IDE hold *record* as the file's *bytes* have it: a text object part for part, any other file by its content?
-            bool IdeHad(CompareRecord record, byte[] bytes)
-            {
-                if (!record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase))
-                    return ExportCommand.ContentKey(record.Path, bytes) == ExportCommand.ContentKey(record.Path, _work.IdeFiles[record.Path]);
-                var ide = At(_work.IdeObjects, record.ObjectPath);
-                var then = At(StViewReader.ReadFile(record.Path, bytes).Objects, record.ObjectPath);
-                return then != null && string.Equals(then.Kind, ide.Kind, StringComparison.OrdinalIgnoreCase) && StViewObject.DifferentParts(then, ide).Count == 0;
             }
         }
     }

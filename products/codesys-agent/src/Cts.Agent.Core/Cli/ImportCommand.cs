@@ -30,6 +30,8 @@ namespace Cts.Cli
                 if (data.ContainsKey("refused")) answer.Detail("would be refused: " + data["refused"]).Failed().WithExitCode(1);
                 foreach (var conflict in conflicts) answer.Detail("conflict " + conflict["name"] + " " + conflict["path"] + ": changed in the IDE and on disk, the same lines");
                 foreach (var name in Values(data, "merges")) answer.Detail("merges " + Name(name) + ": changed in the IDE and on disk, apart; the import merges them");
+                foreach (var name in Values(data, "ide_older")) answer.Detail("ide-older " + Name(name) + ": changed on disk, and the IDE holds an older version of it (a project file saved before the last import); "
+                    + "the import leaves it as it is on both sides: cts import --take " + Name(name) + "=disk or --force gives the IDE the folder's text");
                 if (conflicts.Count > 0) answer.Detail(data["conflict_next"]);
                 var objects = data["objects"] as IDictionary<string, object>;
                 foreach (var category in new[] { "modified", "added", "deleted", "not_importable", "ide_changed" })
@@ -90,7 +92,8 @@ namespace Cts.Cli
         // left so: their IDE text an earlier sync recorded (*older*) for each that
         // has text, the IDE went back in time; else it holds edits of its own.
         static bool WentBack(ICollection<IDictionary<string, object>> left, ICollection<object> older) =>
-            older.Count > 0 && older.Count == left.Count(item => !Equals(JsonMap.Value(item, "ide_deleted"), true));
+            older.Count > 0 && older.Count == left.Where(item => !Equals(JsonMap.Value(item, "ide_deleted"), true))
+                .Select(item => Convert.ToString(item["name"])).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
         static string IdeLeftLine(ICollection<IDictionary<string, object>> left, ICollection<object> older)
         {

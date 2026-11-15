@@ -25,6 +25,8 @@ namespace Cts.Cli
             // The deleted objects below another deleted one, which go with it.
             internal List<CompareRecord> DeletedMembers;
             internal List<IDictionary<string, object>> FieldReadBack, Conflicts;
+            // The objects both changed whose IDE text an earlier sync recorded, left as they are on both sides.
+            internal List<CompareRecord> IdeOlderLeft;
             internal List<CompareRecord> NativeDeletes, NativeGone, NativeImports, NativeReplaces, NativeIdeTaken;
             internal List<TextListPlan> CsvPlans;
             internal List<AddedText> AddedItems;

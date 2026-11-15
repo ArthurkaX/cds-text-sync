@@ -2474,6 +2474,73 @@ namespace Cts.Agent.Tests
             Assert.StartsWith("Next: cts import --force gives the IDE the folder's text", answer.Details[1]);
         }
 
+        // The IDE reopened a project file saved before the last import, and the
+        // folder was edited since: a merge would take the last import's lines,
+        // which the IDE lost, out of the folder too. The import leaves the object
+        // as it is on both sides and says the IDE went back, --force the way on.
+        [Fact]
+        public void An_object_edited_on_disk_that_the_IDE_holds_an_older_version_of_is_not_merged()
+        {
+            var view = ViewFolder.Of(_root);
+            var main = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
+            var file = Path.Combine(view, main.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(file, File.ReadAllText(file).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := Disk;"));
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            var edited = File.ReadAllText(file).Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM");
+            File.WriteAllText(file, edited);
+            var calls = new List<string>();
+            IDictionary<string, object> written = null;
+            IDictionary<string, object> Import(params string[] flags) => ImportCommand.Execute(ImportCall(flags, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.export") { File.Copy(Path.Combine(Fixture, "snapshot.xml"), Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(main.Path);
+                if (method == "objects.settext") { written = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new[] { written } } };
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            var planned = ImportCommand.Build(Import("--dry-run"));
+            Assert.DoesNotContain(planned.Details, line => line.StartsWith("merges ", StringComparison.Ordinal));
+            Assert.Contains(planned.Details, line => line.StartsWith("ide-older MAIN: changed on disk, and the IDE holds an older version", StringComparison.Ordinal));
+            var result = Import();
+            Assert.DoesNotContain("objects.settext", calls);
+            Assert.Equal(edited, File.ReadAllText(file));
+            Assert.Empty((IEnumerable<string>)result["merged"]);
+            Assert.Equal(new object[] { "MAIN" }, (IEnumerable<object>)result["ide_older"]);
+            Assert.Empty(_sources);
+            var answer = ImportCommand.Build(result);
+            Assert.Equal(2, answer.ExitCode);
+            Assert.StartsWith("the IDE holds an older version of 1 object(s)", answer.Details[0]);
+            Assert.StartsWith("Next: cts import --force gives the IDE the folder's text", answer.Details[1]);
+            // --take settles it whole: the disk's text, the IDE's kept on refs/cts/overwritten.
+            var taken = Import("--take", "MAIN=disk");
+            Assert.Contains("eObservedMode := Disk;", Convert.ToString(written["implementation"]));
+            Assert.Contains("// disk edit", Convert.ToString(written["implementation"]));
+            Assert.Equal(edited, File.ReadAllText(file));
+            Assert.False(taken.ContainsKey("ide_older"), Json.Pretty(taken));
+            Assert.NotEmpty((IEnumerable<object>)taken["overwritten_ide_changes"]);
+        }
+
+        // A text list likewise: the IDE's rows are an earlier sync's, and the rows the last import added stay in the .csv.
+        [Fact]
+        public void A_text_list_edited_on_disk_that_the_IDE_holds_an_older_version_of_is_not_merged()
+        {
+            var view = ViewFolder.Of(_root);
+            var file = TextListFile();
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            File.WriteAllText(file, "TextID,TextDefault\n212,Start\n705,This is stabur Runtime under \n978,This is stabur Runtime under arm VM\n979,Pump on\n");
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            var csv = "TextID,TextDefault\n212,Start\n705,This is stabur Runtime under \n978,This is stabur Runtime under arm VM\n979,Pump on\n980,Valve open\n";
+            // The IDE's rows are the first sync's, without the empty row the other tests' IDE ends with.
+            var (calls, result, _) = TextListBothChanged(csv, rows => rows.RemoveAt(rows.Count - 1));
+            Assert.DoesNotContain("objects.listadd", calls);
+            Assert.DoesNotContain("objects.listremove", calls);
+            Assert.DoesNotContain("objects.setfield", calls);
+            Assert.Equal(csv, File.ReadAllText(file).Replace("\r\n", "\n"));
+            Assert.Equal(new object[] { "GlobalTextList" }, (IEnumerable<object>)result["ide_older"]);
+            Assert.Equal(2, ImportCommand.Build(result).ExitCode);
+        }
+
         // An edit made in the IDE, no earlier sync's text, fails the import too, and the line names both ways on.
         [Fact]
         public void An_import_that_leaves_an_IDE_edit_is_partial_and_names_compare_and_force()
