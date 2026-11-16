@@ -19,6 +19,10 @@ namespace Cts.Agent.Tests
         readonly string _project = @"C:\projects\demo.project";
         readonly string _stamp = "session:0";
 
+        // The fixture's MAIN program: it has two, and a directory lists its
+        // files in an order of the file system's own.
+        static string MainFile(string view) => Directory.GetFiles(view, "MAIN.st", SearchOption.AllDirectories).Single();
+
         public ImportCommandTests()
         {
             Directory.CreateDirectory(_root);
@@ -38,8 +42,7 @@ namespace Cts.Agent.Tests
         public void A_file_changed_while_the_import_runs_keeps_its_base_and_its_edit()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
-                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             var baseFile = ExportCommand.Relative(_root, file);
             var before = GitRepository.Run(_root, "show " + ProcessArgs.Quote("refs/cts/base:" + baseFile));
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
@@ -128,8 +131,7 @@ namespace Cts.Agent.Tests
         public void Carries_an_existing_text_edit_and_moves_only_its_base_file()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
-                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             var text = File.ReadAllText(file);
             File.WriteAllText(file, text.Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
             var originalBase = GitRepository.Run(_root, "rev-parse refs/cts/base").Trim();
@@ -172,8 +174,7 @@ namespace Cts.Agent.Tests
         public void An_edit_made_in_the_IDE_after_the_plan_read_it_is_refused_before_any_write(bool exported)
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
-                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
             var parsed = StViewReader.Read(view).Objects.First(item => Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar)) == file);
             _editedMeanwhile = true;
@@ -412,8 +413,7 @@ namespace Cts.Agent.Tests
         public void Dry_run_returns_the_compare_plan_without_writes()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
-                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             var text = File.ReadAllText(file);
             File.WriteAllText(file, text.Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
             var calls = new List<string>();
@@ -433,7 +433,7 @@ namespace Cts.Agent.Tests
         public void Dry_run_meets_the_refusal_the_import_would()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
             // The IDE tree lacks the edited program, so the import has nothing to write it into.
             var result = ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
@@ -455,8 +455,7 @@ namespace Cts.Agent.Tests
         public void Dry_run_returns_public_object_dictionaries_without_private_keys()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
-                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// typed plan edit\nEND_PROGRAM"));
             var result = ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
                 method == "project.tree" ? ViewTree(view) : throw new InvalidOperationException("dry run must use the matching IDE stamp")));
@@ -514,7 +513,7 @@ namespace Cts.Agent.Tests
             var viewRelative = ExportCommand.Relative(_root, view);
             Git("add -A"); Git("commit -q -m saved");
             var saved = GitRepository.Run(_root, "rev-parse HEAD").Trim();
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// later\nEND_PROGRAM"));
             File.WriteAllText(Path.Combine(view, "GVL_Later.st"), "VAR_GLOBAL\n    xLater : BOOL;\nEND_VAR\n");
             Directory.CreateDirectory(Path.Combine(view, "Later"));
@@ -548,7 +547,7 @@ namespace Cts.Agent.Tests
         public void SyncRefusedOnlineNamesSyncToRepeat()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// edit\nEND_PROGRAM"));
             var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(SyncCall(null, (method, args) => throw new InvalidOperationException("no project edit while online"), true)));
             Assert.EndsWith("Run `cts disconnect`, then repeat `cts sync`.", failure.Message);
@@ -558,7 +557,7 @@ namespace Cts.Agent.Tests
         public void ImportRefusesOnlineBeforeAnyProjectEdit()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// edit\nEND_PROGRAM"));
             var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(ImportCall(null, (method, args) => throw new InvalidOperationException("no project edit while online"), true)));
             Assert.Equal("The IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat `cts import`.", failure.Message);
@@ -569,7 +568,7 @@ namespace Cts.Agent.Tests
         public void ImportRefusesDeniedWriteBeforeCallingMutationMethods()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// edit\nEND_PROGRAM"));
             var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(ImportCall(null, (method, args) => throw new InvalidOperationException("mutation must be refused"), deny: new[] { "sync_import_text" })));
             Assert.Equal("Forbidden by the deny list (deny list includes 'sync_import_text')  See `cts permissions`.", failure.Message);
@@ -580,7 +579,7 @@ namespace Cts.Agent.Tests
         public void DeniedDeleteNamesTheObjectsItWouldDelete()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.Delete(file);
             var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(ImportCall(null, (method, args) => throw new InvalidOperationException("mutation must be refused"), deny: new[] { "delete_pou" })));
             Assert.Equal("Forbidden by the deny list (deny list includes 'delete_pou'): it would delete " + Path.GetFileNameWithoutExtension(file) + " from the project; nothing was imported, the other changes neither  See `cts permissions`.", failure.Message);
@@ -603,8 +602,7 @@ namespace Cts.Agent.Tests
         public void ImportRefusesWholePlanBeforeWritingAValidTextEdit()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
-                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// edit\nEND_PROGRAM"));
             File.WriteAllText(Path.Combine(view, "unsupported.csv"), "new data");
             var writes = new List<string>();
@@ -1892,9 +1890,9 @@ namespace Cts.Agent.Tests
         public void ImportAppliesPragmaBuildFlagsAfterWritingText()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             File.WriteAllText(file, "(* cds-text-sync: ExcludeFromBuild *)\n" + File.ReadAllText(file).Replace("END_PROGRAM", "// flag and text edit\nEND_PROGRAM"));
-            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Kind == "PROGRAM");
+            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
             IDictionary<string, object> current = new Dictionary<string, object>();
             var calls = new List<string>();
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
@@ -2918,7 +2916,7 @@ namespace Cts.Agent.Tests
         {
             var view = ViewFolder.Of(_root);
             var before = StViewReader.Read(view);
-            var itemBefore = before.Objects.First(candidate => candidate.Kind == "PROGRAM");
+            var itemBefore = before.Objects.First(candidate => candidate.Path.Last() == "MAIN");
             var file = Path.Combine(view, itemBefore.File.Replace('/', Path.DirectorySeparatorChar));
             var oldName = itemBefore.Path.Last();
             var newName = oldName + "_Renamed";
@@ -3072,7 +3070,7 @@ namespace Cts.Agent.Tests
         {
             var view = ViewFolder.Of(_root);
             var tree = ViewTree(view);
-            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Kind == "PROGRAM");
+            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
             IDictionary<string, object> node = tree;
             foreach (var name in item.Path.Take(item.Path.Length - 1))
                 node = ((IList<IDictionary<string, object>>)node["children"]).Single(child => Equals(child["name"], name));
@@ -3094,7 +3092,7 @@ namespace Cts.Agent.Tests
         public void A_file_moved_into_a_new_folder_moves_its_object_there_without_a_delete()
         {
             var view = ViewFolder.Of(_root);
-            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Kind == "PROGRAM");
+            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
             var file = Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar));
             var folder = Path.Combine(Path.GetDirectoryName(file), "Moved");
             Directory.CreateDirectory(folder);
@@ -3309,7 +3307,7 @@ namespace Cts.Agent.Tests
         public void ImportWithoutBaseWritesDiskEditsAndDoesNotDeleteMissingFiles()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             var item = StViewReader.Read(view).Objects.First(candidate => Path.Combine(view, candidate.File.Replace('/', Path.DirectorySeparatorChar)) == file);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// no base edit\nEND_PROGRAM"));
             var missing = Directory.GetFiles(view, "GVL_Bench.st", SearchOption.AllDirectories).Single();
@@ -3349,7 +3347,7 @@ namespace Cts.Agent.Tests
         public void ImportFromAnotherProjectFilesSyncWritesTheDiskTextAndTakesTheFolderOver()
         {
             var view = ViewFolder.Of(_root);
-            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var file = MainFile(view);
             var item = StViewReader.Read(view).Objects.First(candidate => Path.Combine(view, candidate.File.Replace('/', Path.DirectorySeparatorChar)) == file);
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// the branch's edit\nEND_PROGRAM"));
             SyncBase.SaveProject(_root, Path.Combine(Path.GetDirectoryName(_project), "older copy.project"));
