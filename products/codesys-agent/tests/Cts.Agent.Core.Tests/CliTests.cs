@@ -107,12 +107,21 @@ namespace Cts.Agent.Tests
         {
             public readonly Dictionary<int, Func<string, IDictionary<string, object>, object>> Agents = new Dictionary<int, Func<string, IDictionary<string, object>, object>>();
 
+            // The dialog watch's probes (DialogWatch) reach the agents only
+            // when a test watches for a dialog. Otherwise they find none: the
+            // watch probes beside any call slower than its poll, as one is on
+            // a loaded test machine, and an agent that knows only its
+            // command's methods must not see them. A command's own
+            // dialog.probe carries start_timeout_ms; the watch's carries none.
+            public bool Probes;
+
             public IList<int> Pids() => Agents.Keys.OrderBy(p => p).ToList();
 
             public AgentConnection Open(int pid)
             {
                 if (!Agents.TryGetValue(pid, out var handle)) throw new AgentException("transport", "no agent pipe for pid " + pid);
-                return new AgentConnection(new FakeAgentStream(handle), "cts-agent-" + pid);
+                return new AgentConnection(new FakeAgentStream((method, p) => !Probes && method == "dialog.probe" && p.Count == 0
+                    ? new Dictionary<string, object> { { "dialogs", new List<object>() } } : handle(method, p)), "cts-agent-" + pid);
             }
         }
 
@@ -335,7 +344,7 @@ namespace Cts.Agent.Tests
         {
             using (var release = new ManualResetEventSlim())
             {
-                var host = new FakeHost();
+                var host = new FakeHost { Probes = true };
                 host.Agents[7144] = Agent(null, null, (method, parameters) =>
                 {
                     if (method == "app.build") { release.Wait(); return new Dictionary<string, object>(); }
@@ -479,7 +488,7 @@ namespace Cts.Agent.Tests
         [Fact]
         public void AProgressWindowDoesNotEndTheWait()
         {
-            var host = new FakeHost();
+            var host = new FakeHost { Probes = true };
             var probes = 0;
             host.Agents[7144] = Agent(null, null, (method, parameters) =>
             {
