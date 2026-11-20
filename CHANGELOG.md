@@ -4,6 +4,61 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 4.1.2 (2026-11-20)
+
+_What changes against 4.1.0. Nothing to do on upgrading: run the installer line again._
+
+**Import safety**
+
+- An object the IDE changed or deleted since the last sync, which `cts import` leaves as the IDE has it, makes the run partial: exit 2 and `ide_left=N`, so `cts import && cts build && cts download` stops instead of downloading the IDE's code. The first lines name the objects and the way on (`cts compare`, `cts import --force`, `cts sync`). An object only the IDE has keeps the run ok; the quick window's footer says which it was.
+- An object whose IDE text an earlier sync recorded is listed under `ide_older`: the IDE holds an older version, as after reopening a project file saved before the last import. When the folder changed it too, import no longer merges the two; before the merge took the last import's lines, which the IDE had lost, out of the folder file as well. Such an object stays as it is on both sides and the run is partial; `--dry-run` names it `ide-older`. Objects, text lists and `.xml` objects alike.
+- `cts import --take KEY=disk|ide` settles an object whole, without a merge, and takes the object's name as the conflict line shows it (a text list's `.xml` and `.csv` are one object). A name objects in other places share is refused with their keys; a refused key lists the objects both sides changed.
+- A text list both sides changed is merged row by row, found by TextID, so rows each side added (`cts visu from-svg` on disk, an id the IDE gave a text) go in together instead of a conflict at the end of the `.csv`. Only a cell both changed to other texts, or a row one side changed and the other removed, is a conflict.
+- `cts import --force` gives the IDE the rows of a text list only the IDE changed, and an alarm group's messages; before it skipped the `.csv`, still answered `overwrote-ide`, and the next import found the IDE's empty list again.
+- `cts import` names a placeholder the device and library profile do not know, with the `cts lib remove` and `cts lib add` that reference the library itself; `cts lib add --placeholder` says the name must be one they know.
+
+**Online**
+
+- `cts write` tells an accepted write from a refused one: `read_back=held` when the PLC showed the value, `read_back=reset` with `shown=` when the IDE accepted the write but the PLC showed another value on every read for 2 s (a request flag the program clears faster than the IDE's monitoring refreshes, or a variable overwritten every cycle), `read_back=unreadable` with the reason. All three exit 0; a refused write stays an error. `value` is the IDE's spelling of what was written (`written_as` is gone), and several pairs answer `held=N` and share one read-back. `cts trend on`/`off` and `cts snapshooter restore` read the same states. The guide shows how to check a request through what acknowledges it.
+- `cts read` and `cts write` take a variable with its application in front, as IO mappings and watch lists write it (`Application.GVL.x`, `Device.Application.GVL.x`); a GVL or program named like the application keeps its variable. `cts read` expands such a structure.
+- `cts download` and `cts connect` wait for the IDE's outcome up to 10 minutes instead of 120 s, and download once: a login that already downloaded is not followed by a second download.
+- A `cts connect` that the PLC's other application refuses ends in `Next: cts download`, the command that logs in and replaces it.
+- `cts status` names the logged-in application's state, `app=run`, `stop` or `exception`, from the runtime's operating flags; the exception line points at `cts plc-log`.
+
+**Visualization**
+
+- `cts visu from-svg` gives a textfield or plain shape with `data-cds-input` (`numpad`, `keypad`, `edit`, `default`) the IDE's Write Variable input on the variable it shows, with `data-input-min`/`-max` as its limits; `visu to-svg` writes it back and `visu bind --input` sets it.
+- `numpad` and `keypad` are the dialogs the application's Visualization Manager names (`VisuDialogs.NumPad2`/`Keypad2` under a 4.x VisuDialogs), the only ones CODESYS instantiates; with no manager on disk they are refused, pointing at `default`. `visu from-svg` and `visu check` report an input dialog the manager does not name, and a Library Manager without VisuDialogs with the `cts lib add` that references it.
+- `cts visu settings` shows and sets the start screen (`--start-visu`), isotropic scaling (`--isotropic`) and CurrentVisuGlobal (`--current-visu`) of an application's visualization; the IDE leaves CurrentVisuGlobal off, so screen switching from code did nothing. It and `visu check` report a start screen naming no screen and code writing CurrentVisu while CurrentVisuGlobal is off. `visu create-screen` loses `--start-visu`: the clients' start screen is the manager's, not the screen's.
+- A combobox takes `data-list-rows` and `data-row-height`; left out, the style decides as before. `visu to-svg` writes them back and `visu lint` reports an explicit list that fits neither below nor above the combobox. The combobox template carries the dropdown members most exported comboboxes have; before it carried one screen's values for a 52 px element, which gave a lower combobox huge rows.
+- Elements carry an explicit font, so WebVisu shows the sketch's typeface and size instead of the style's Font-Standard. Labels and text fields get their rotation centre, and `visu check` no longer asks for a centre at X+W/2, which the IDE itself does not keep.
+- In a project without a GlobalTextList, `visu from-svg` writes `POUs/GlobalTextList.xml` and `.csv` for `cts import` to create; before every text got the id 1.
+- A new screen takes its place in the project tree from the `.cds-object.xml` of its folder and the ones above, so `--create-screen` accepts a folder that holds only `.st` files and refuses one the IDE does not have yet.
+- `visu lint`'s type scale is 11/12/16/22/28/36/48, 36 and 48 for a value card's number; `--fix` moves 13, 15, 17, 20 and 24 to the nearest step. Three or more crowding pairs at one gap are one line, so a dense table is not thirty, and a box 4 off a multiple of 8 centred on the grid counts as on the grid.
+
+**Commands**
+
+- `cts lib add` and `lib redirect` edit the application's Library Manager when the project has one application beside the root's; with several the refusal gives the `--app` command, and outside a sync folder it points at `cts status`.
+- `cts project update` on a colleague's PC keeps the reason a pull did not go through instead of "no upstream".
+- `projects.json` is refused, not written over, when it cannot be read, and is replaced atomically.
+- `cts new` refuses a member name the owner has as a member or a variable, not one it merely mentions.
+- `cts docs` puts the previous bundle back after a copy that stopped half way.
+- `visu lint --fix` re-reads with the view the sketch was read with and writes no pass whose fixes leave no sketch.
+- The problem report hides a path with spaces whole and keeps a placeholder an object is named like.
+- The FSM window's Live read recovers from any failure.
+
+**Agent**
+
+- The dialog watcher reads button captions from the window's own text with a deadline, never from the dialog's thread.
+- A PLC file run's own failure is no longer hidden by giving the shared connection back; reading the project's trace answers `plc_error` when the deny list keeps cts off the PLC's files.
+
+**Install and documentation**
+
+- Each release carries `cds-text-sync-<tag>.zip` and its `.sha256`, which the installer downloads first, so a release install no longer fetches the agent binaries from the Git LFS media host.
+- The documentation is a site with search: [cds-text-sync.pages.dev](https://cds-text-sync.pages.dev), built from the repository's Markdown.
+
+---
+
 ### Version 4.1.0 (2026-11-06)
 
 _What changes against 4.0.0. Nothing to do on upgrading: run the installer line again._
