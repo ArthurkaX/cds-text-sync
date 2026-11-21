@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Cts.Agent;
 
 namespace Cts.Sync
 {
@@ -72,8 +73,7 @@ namespace Cts.Sync
             try
             {
                 File.WriteAllBytes(next, bytes);
-                if (File.Exists(full)) File.Replace(next, full, null);
-                else File.Move(next, full);
+                SafeFile.Replace(next, full);
             }
             finally { if (File.Exists(next)) File.Delete(next); }
             Saw(path, bytes);
@@ -84,7 +84,7 @@ namespace Cts.Sync
         internal bool Delete(string path)
         {
             if (Moved(path)) return false;
-            File.Delete(Full(Relative(path)));
+            SafeFile.Delete(Full(Relative(path)));
             Saw(path, null);
             return true;
         }
