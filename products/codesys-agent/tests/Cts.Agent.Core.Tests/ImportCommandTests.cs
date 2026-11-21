@@ -3174,7 +3174,12 @@ namespace Cts.Agent.Tests
                 if (method == "project.tree") return Tree(parentKey.Split('/'));
                 if (method == "objects.create")
                 {
-                    if (Equals(args["kind"], "folder")) return new Dictionary<string, object> { { "guid", "33333333-3333-3333-3333-333333333333" } };
+                    if (Equals(args["kind"], "folder"))
+                    {
+                        // The folder's file names its guid: the IDE keeps it while no object has it.
+                        Assert.Equal(renamedFolderFile ? "32d92914-bcb4-4227-b529-32fd90910eca" : null, args.TryGetValue("guid", out var own) ? own : null);
+                        return new Dictionary<string, object> { { "guid", "33333333-3333-3333-3333-333333333333" } };
+                    }
                     currentGuid++;
                     return new Dictionary<string, object> { { "guid", currentGuid.ToString() } };
                 }
@@ -3202,6 +3207,45 @@ namespace Cts.Agent.Tests
             var folderFile = Path.Combine(newFolder, ".cds-object.xml");
             Assert.Equal(Encoding.UTF8.GetString(ViewExport.NativeBytes(XElement.Parse(folderEntry, LoadOptions.PreserveWhitespace), false)), File.ReadAllText(folderFile));
             Assert.Contains(parentKey + "/NewFolder/.cds-object.xml", (IList<string>)result["to_disk"]);
+        }
+
+        // An empty folder's file is Name.xml, not Name/.cds-object.xml: a new one
+        // is made as a folder, with the guid its file names, and its file stays
+        // where it is (a folder below a visualization, after a branch switch, #74).
+        [Fact]
+        public void CreatesANewEmptyFolderFromItsXmlFileWithItsGuid()
+        {
+            var view = ViewFolder.Of(_root);
+            var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .First(path => path.Replace('\\', '/').EndsWith("/Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
+            var parent = Path.GetDirectoryName(appContainer);
+            var parentKey = Path.GetRelativePath(view, parent).Replace('\\', '/');
+            var entry = File.ReadAllText(appContainer)
+                .Replace("32d92914-bcb4-4227-b529-32fd90910eca", "44444444-4444-4444-4444-444444444444")
+                .Replace("<Single Name=\"Name\" Type=\"string\">Application</Single>", "<Single Name=\"Name\" Type=\"string\">Empty</Single>")
+                .Replace("639b491f-5557-464c-af91-1471bac9f549", ObjectKinds.FolderType);
+            var file = Path.Combine(parent, "Empty.xml");
+            File.WriteAllText(file, entry);
+            var calls = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(parentKey.Split('/'));
+                if (method == "objects.create")
+                {
+                    Assert.Equal("folder", args["kind"]);
+                    Assert.Equal("Empty", args["name"]);
+                    Assert.Equal("11111111-1111-1111-1111-111111111111", args["parent_guid"]);
+                    Assert.Equal("44444444-4444-4444-4444-444444444444", args["guid"]);
+                    return new Dictionary<string, object> { { "guid", "44444444-4444-4444-4444-444444444444" } };
+                }
+                if (method == "project.export") return SnapshotReply(args, entry);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.Equal(1, calls.Count(call => call == "objects.create"));
+            Assert.Equal(new[] { "Empty" }, (IList<string>)result["created_native_objects"]);
+            Assert.False(Directory.Exists(Path.Combine(parent, "Empty")));
+            Assert.Equal(Encoding.UTF8.GetString(ViewExport.NativeBytes(XElement.Parse(entry, LoadOptions.PreserveWhitespace), false)), File.ReadAllText(file));
         }
 
         [Fact]

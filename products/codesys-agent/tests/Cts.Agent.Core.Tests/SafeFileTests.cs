@@ -46,7 +46,7 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
-        public void Replace_waits_for_a_program_that_holds_the_target_open()
+        public async Task Replace_waits_for_a_program_that_holds_the_target_open()
         {
             var folder = Path.Combine(Path.GetTempPath(), "cts-safe-file-" + Path.GetRandomFileName());
             Directory.CreateDirectory(folder);
@@ -61,7 +61,7 @@ namespace Cts.Agent.Tests
 
                 SafeFile.Replace(temporary, target);
 
-                release.Wait();
+                await release;
                 Assert.Equal("new", File.ReadAllText(target));
             }
             finally { Directory.Delete(folder, true); }

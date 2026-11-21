@@ -185,8 +185,6 @@ namespace Cts.Cli
                             var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
                             if (!File.Exists(full)) return Refused(_call, _work.Data, path + ": deleted on disk, changed in the IDE; cts import --force deletes it, cts sync keeps the IDE's");
                             var xml = File.ReadAllText(full);
-                            if (string.Equals((NativeMetaValue(xml, "TypeGuid") ?? "").Trim().Trim('{', '}'), ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase))
-                                return Refused(_call, _work.Data, "added " + path + ": a new container; make it in the IDE");
                             var name = NativeMetaValue(xml, "Name");
                             if (!string.Equals(name, Path.GetFileName(key), StringComparison.OrdinalIgnoreCase))
                                 return Refused(_call, _work.Data, "added " + path + ": its object is named '" + name + "', not as the file");

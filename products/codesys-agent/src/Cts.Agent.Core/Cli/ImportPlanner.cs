@@ -168,6 +168,12 @@ namespace Cts.Cli
                     && !record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)
                     && record.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).ToList();
                 _work.CsvRecords = planned.Where(record => record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)).ToList();
+                // An empty folder's file is Name.xml, not Name/.cds-object.xml: a new one is made as the other folders are.
+                foreach (var record in _work.NativeRecords.Where(record => record.Category == "added" && NewEmptyFolder(record)).ToList())
+                {
+                    _work.NativeRecords.Remove(record);
+                    _work.FolderRecords.Add(new CompareRecord { Category = "added", Path = NativeKey(record.Path) + "/.cds-object.xml", Name = record.Name });
+                }
                 foreach (var record in _work.NativeRecords.Where(record => record.Category == "added"))
                 {
                     var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
@@ -192,6 +198,13 @@ namespace Cts.Cli
                 var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
                 var type = File.Exists(full) ? (NativeMetaValue(File.ReadAllText(full), "TypeGuid") ?? "").Trim().Trim('{', '}') : "";
                 return type.Length > 0 && !string.Equals(type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool NewEmptyFolder(CompareRecord record)
+            {
+                if (record.Path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase) || _work.IdeByPath.ContainsKey(NativeKey(record.Path))) return false;
+                var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
+                return File.Exists(full) && string.Equals((NativeMetaValue(File.ReadAllText(full), "TypeGuid") ?? "").Trim().Trim('{', '}'), ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase);
             }
 
             bool NewContainerAt(string key) => _work.NativeRecords.Any(record => record.Category == "added"

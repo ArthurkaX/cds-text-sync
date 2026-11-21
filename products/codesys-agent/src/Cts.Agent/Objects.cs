@@ -131,8 +131,11 @@ namespace Cts.Agent
             Guid placed;
             try
             {
-                if (spec.AtRoot) placed = SvAddAtTop(node, created, spec.Name);
-                else SvAddObject(node, created, spec.Name, Guid.NewGuid(), out placed);
+                // A folder made again from its file keeps its guid, so the objects
+                // whose files name it as their folder need no rewrite.
+                var guid = spec.OwnGuid.HasValue && !(bool)Manager("ExistsObject", handle, spec.OwnGuid.Value) ? spec.OwnGuid.Value : Guid.NewGuid();
+                if (spec.AtRoot) placed = SvAddAtTop(node, created, spec.Name, guid);
+                else SvAddObject(node, created, spec.Name, guid, out placed);
                 // The folder factory wires the folder into the view only here.
                 if (spec.Kind == "folder") InvokeFolderCreated(factory, handle, placed);
             }
@@ -229,12 +232,11 @@ namespace Cts.Agent
 
         // The view's own 3-argument AddObject puts an object at its top (a
         // view has no 5-argument form); the guid passed in is the new one.
-        Guid SvAddAtTop(object view, object obj, string name)
+        Guid SvAddAtTop(object view, object obj, string name, Guid guid)
         {
             var add = NeedMethod(view.GetType(), "AddObject",
                 new[] { typeof(Guid), FindType("_3S.CoDeSys.Core.Objects.IObject"), typeof(string) },
                 "IStructuredView.AddObject is not present in this IDE");
-            var guid = Guid.NewGuid();
             try { add.Invoke(view, new object[] { guid, obj, name }); }
             catch (Exception e) { throw new ProtocolException(ErrorCodes.BadParams, "cannot create '" + name + "' at the project root: " + Invocation.Cause(e).Message); }
             return guid;

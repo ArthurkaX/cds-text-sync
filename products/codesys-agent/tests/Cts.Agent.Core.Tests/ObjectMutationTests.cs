@@ -210,6 +210,22 @@ namespace Cts.Agent.Tests
             Assert.Equal(Guid.Parse("d9b2b2cc-ea99-4c3b-aa42-1e5c49e65b84"), spec.StructuredView);
         }
 
+        // A folder made again from its file keeps the file's guid; no other kind takes one.
+        [Fact]
+        public void AFolderTakesTheGuidOfItsFile()
+        {
+            var spec = ObjectCreate.From(Req(
+                "{\"method\":\"objects.create\",\"params\":{\"parent_guid\":\"" + Parent
+                + "\",\"kind\":\"folder\",\"name\":\"F\",\"guid\":\"9b96be63-5919-4072-b7c4-d76c8035ad12\"}}"));
+            Assert.Equal(Guid.Parse("9b96be63-5919-4072-b7c4-d76c8035ad12"), spec.OwnGuid);
+            Assert.False(ObjectCreate.From(Req("{\"method\":\"objects.create\",\"params\":{\"parent_guid\":\"" + Parent
+                + "\",\"kind\":\"folder\",\"name\":\"F\"}}")).OwnGuid.HasValue);
+            Assert.Equal("bad_params", FailCreate("{\"parent_guid\":\"" + Parent
+                + "\",\"kind\":\"gvl\",\"name\":\"G\",\"guid\":\"9b96be63-5919-4072-b7c4-d76c8035ad12\"}").Code);
+            Assert.Equal("bad_params", FailCreate("{\"parent_guid\":\"" + Parent
+                + "\",\"kind\":\"folder\",\"name\":\"F\",\"guid\":\"nope\"}").Code);
+        }
+
         [Fact]
         public void AFolderRefusesAnyText()
         {

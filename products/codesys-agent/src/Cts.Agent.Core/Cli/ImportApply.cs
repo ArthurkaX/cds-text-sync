@@ -141,13 +141,29 @@ namespace Cts.Cli
                         : _work.IdeByPath.TryGetValue(parent, out var existingParent) ? existingParent : null;
                     if (parentGuid == null && missed.Contains(parent)) { missed.Add(place.Key); continue; }
                     if (parentGuid == null) throw new InvalidOperationException("validated new folder parent is missing: " + place.Key);
-                    var reply = _call.Call("objects.create", Below(parentGuid, new Dictionary<string, object>
-                    {
-                        { "kind", "folder" }, { "name", Path.GetFileName(place.Key) },
-                    }));
+                    var parameters = Below(parentGuid, new Dictionary<string, object> { { "kind", "folder" }, { "name", Path.GetFileName(place.Key) } });
+                    var own = FolderFile(place.Key);
+                    if (own != null) parameters["guid"] = NativeMetaValue(File.ReadAllText(Path.Combine(_work.View, own.Replace('/', Path.DirectorySeparatorChar))), "Guid").Trim('{', '}');
+                    var reply = _call.Call("objects.create", parameters);
                     _work.Created[place.Key] = Convert.ToString(reply["guid"]);
                     _work.CreatedFolders.Add(place.Key);
                 }
+            }
+
+            // The folder's file, view-relative: Name/.cds-object.xml, or Name.xml for an
+            // empty one; null for a folder inferred from the directories.  A folder made
+            // again keeps the guid it names, the one the files below it name.
+            string FolderFile(string key)
+            {
+                foreach (var candidate in new[] { key + "/.cds-object.xml", key + ".xml" })
+                {
+                    var full = Path.Combine(_work.View, candidate.Replace('/', Path.DirectorySeparatorChar));
+                    if (!File.Exists(full)) continue;
+                    var xml = File.ReadAllText(full);
+                    if (string.Equals((NativeMetaValue(xml, "TypeGuid") ?? "").Trim().Trim('{', '}'), ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase)
+                        && Guid.TryParse(NativeMetaValue(xml, "Guid"), out _)) return candidate;
+                }
+                return null;
             }
 
             static bool IsContainer(CompareRecord record) => record.Path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase);
@@ -494,8 +510,7 @@ namespace Cts.Cli
                     .ToList();
                 // A folder the import made gets its file as export writes it, so the next export adds none;
                 // a file already there (a renamed folder's) still names the old folder's guid and name.
-                var newFolders = _work.CreatedFolders.Select(key => key + "/.cds-object.xml")
-                    .Select(path => new IdeFile { Guid = _work.Created[FolderKey(path)], Path = path });
+                var newFolders = _work.CreatedFolders.Select(key => new IdeFile { Guid = _work.Created[key], Path = FolderFile(key) ?? key + "/.cds-object.xml" }).ToList();
                 var toDisk = WriteIdeFiles(_call, _work.View, _work.Stamps, landedFiles.Concat(ideNativeFiles).Concat(newFolders).ToList());
                 foreach (var path in _work.IdeNewTextFiles)
                 {
@@ -526,6 +541,7 @@ namespace Cts.Cli
                     .Concat(_work.Renames.Select(rename => rename.DeletedRecord.Path))
                     .Concat(_work.ForceRecords.Where(record => _work.ForcedDeletedNames.Contains(record.Name)).Select(record => record.Path))
                     .Concat(_work.FolderRecords.Select(record => record.Path))
+                    .Concat(newFolders.Select(item => item.Path))
                     .Concat(_work.EmptiedFolders.Select(key => key + "/.cds-object.xml"))
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 foreach (var partialFile in _work.Writes.Where(pair => unappliedGuids.Contains(pair.Guid)).Select(pair => pair.Item.File))

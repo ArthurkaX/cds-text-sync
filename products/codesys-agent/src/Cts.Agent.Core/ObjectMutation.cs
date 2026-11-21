@@ -96,6 +96,8 @@ namespace Cts.Agent
         public string Implementation { get; private set; }
         //: A PROPERTY's accessor bodies, keyed "Get"/"Set"; empty for other kinds.
         public IDictionary<string, string> Accessors { get; private set; }
+        //: A folder's own guid, from its file: kept while the project has no object with it.
+        public Guid? OwnGuid { get; private set; }
 
         public static ObjectCreate From(Request req)
         {
@@ -142,6 +144,9 @@ namespace Cts.Agent
                     accessors[pair.Key] = body;
                 }
             }
+            var own = req.String("guid", "");
+            if (own.Length > 0 && kind.ToLowerInvariant() != "folder")
+                throw new ProtocolException(ErrorCodes.BadParams, "parameter 'guid' is for a folder only");
             var atRoot = req.Bool("root", false);
             if (atRoot && req.Params.ContainsKey("parent_guid"))
                 throw new ProtocolException(ErrorCodes.BadParams, "pass parent_guid or root, not both");
@@ -158,6 +163,7 @@ namespace Cts.Agent
                 HasImplementation = hasImplementation,
                 Implementation = hasImplementation ? req.String("implementation") : null,
                 Accessors = accessors,
+                OwnGuid = own.Length == 0 ? (Guid?)null : ParseGuid(own, "guid"),
             };
         }
 
