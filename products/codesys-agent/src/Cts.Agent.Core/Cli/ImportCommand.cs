@@ -423,7 +423,10 @@ namespace Cts.Cli
         // The files of the objects the import wrote, as `cts export` writes them
         // from the IDE now: the IDE completes what it was given (a new object's
         // place, computed properties), and the
-        // file and the base must hold that.  A file that already is so stays.
+        // file and the base must hold that.  A file that already is so stays, as
+        // it does for cts export: one the IDE differs from only in its bookkeeping
+        // (a visualization's UniqueIdGenerator, which every import of it raises)
+        // too, so a branch switch leaves the files it carried as they are.
         static List<string> WriteIdeFiles(CliCall call, string view, ViewStamps stamps, IList<IdeFile> files)
         {
             var written = new List<string>();
@@ -451,7 +454,7 @@ namespace Cts.Cli
                         : ViewExport.NativeBytes(node.Entry, TextListRows.IsTextList(node.Type) && (File.Exists(Path.ChangeExtension(full, ".csv"))
                             || files.Any(other => other.Csv && string.Equals(other.Path, Path.ChangeExtension(file.Path, ".csv"), StringComparison.OrdinalIgnoreCase))));
                     if (bytes == null) continue;
-                    if (File.Exists(full) && File.ReadAllBytes(full).SequenceEqual(bytes)) continue;
+                    if (File.Exists(full) && ExportCommand.SameContent(file.Path, File.ReadAllBytes(full), bytes)) continue;
                     if (stamps.Write(full, bytes)) written.Add(file.Path);
                 }
             }

@@ -932,6 +932,46 @@ namespace Cts.Agent.Tests
             Assert.Contains("477d844b-9b2a-407e-90a4-d36fd6dde2fc", (IList<string>)replaced["properties"]);
         }
 
+        // Every import of a visualization raises its UniqueIdGenerator in the IDE:
+        // the file it came from stays as it is, as cts export leaves it (#74).
+        [Fact]
+        public void Leaves_a_native_file_the_ide_differs_from_only_in_its_bookkeeping()
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "Visualization.xml", SearchOption.AllDirectories).Single();
+            File.WriteAllText(file, File.ReadAllText(file).Replace("<Single Name=\"SizeX\" Type=\"int\">1024</Single>",
+                "<Single Name=\"SizeX\" Type=\"int\">1280</Single>"));
+            var written = File.ReadAllText(file);
+            var raised = Regex.Replace(written, "(Name=\"UniqueIdGenerator\" Type=\"string\">)(\\d+)", match => match.Groups[1].Value + (int.Parse(match.Groups[2].Value) + 6));
+            Assert.NotEqual(written, raised);
+            var baseline = Path.Combine(Fixture, "expected", "PLC_Stabur", "Plc Logic", "Application", "Visualization.xml");
+            var key = ExportCommand.Relative(view, Path.GetDirectoryName(file)) + "/Visualization";
+            // The tree names the file's own guid, so the IDE's export of it is the one compared.
+            var tree = Tree(key.Split('/'));
+            IDictionary<string, object> leaf = tree;
+            while (((IList<IDictionary<string, object>>)leaf["children"]).Count > 0) leaf = ((IList<IDictionary<string, object>>)leaf["children"])[0];
+            leaf["guid"] = Regex.Match(written, "Name=\"Guid\" Type=\"System.Guid\">([^<]+)<").Groups[1].Value;
+            var calls = new List<string>();
+            var exported = false;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return tree;
+                if (method == "objects.export") return NativeReply(calls.Count == 2 ? baseline : file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "objects.replace") return new Dictionary<string, object>();
+                if (method == "project.export")
+                {
+                    exported = ((IEnumerable<string>)args["guids"]).Contains(Convert.ToString(leaf["guid"]));
+                    return SnapshotReply(args, raised);
+                }
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.Contains("objects.replace", calls);
+            Assert.True(exported);
+            Assert.Equal(written, File.ReadAllText(file));
+            Assert.False(result.ContainsKey("to_disk") && ((IList<string>)result["to_disk"]).Any(path => path.EndsWith("/Visualization.xml", StringComparison.Ordinal)));
+        }
+
         [Fact]
         public void Carries_an_edit_of_a_member_file_beside_a_graphical_pou()
         {
