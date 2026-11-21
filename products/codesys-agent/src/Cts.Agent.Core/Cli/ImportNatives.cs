@@ -51,8 +51,10 @@ namespace Cts.Cli
             }
         }
 
+        // An empty *parentGuid* is the project root, which the IDE writes as the empty guid.
         static string PlaceNative(ViewStamps stamps, string path, string content, string oldGuid, string guid, string parentGuid)
         {
+            if (string.IsNullOrEmpty(parentGuid)) parentGuid = Guid.Empty.ToString();
             var raw = File.ReadAllBytes(path);
             var hasBom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
             if (!string.IsNullOrEmpty(oldGuid) && !string.Equals(oldGuid, guid, StringComparison.OrdinalIgnoreCase))
@@ -130,6 +132,23 @@ namespace Cts.Cli
                 asked = rest;
             }
             return objects;
+        }
+
+        // Whether the IDE's object *guid* already holds the native *content* of the file at *path*.
+        static bool IdeHolds(CliCall call, string guid, string path, string content)
+        {
+            IDictionary<string, object> current;
+            try { current = ExportedObjects(call, new[] { guid }).FirstOrDefault(item => item.ContainsKey("meta") && item.ContainsKey("object")); }
+            catch (CliFailure error) when (error.Declined) { return false; }
+            if (current == null) return false;
+            return new[] { "MetaObject", "Object" }.All(member =>
+            {
+                var file = XElement.Parse(NativeMemberText(content, member));
+                file.Attribute("Name")?.Remove();
+                var ide = XElement.Parse(Convert.ToString(current[member == "MetaObject" ? "meta" : "object"]).TrimStart('\uFEFF'));
+                ide.Attribute("Name")?.Remove();
+                return ExportCommand.SameContent(path, Encoding.UTF8.GetBytes(file.ToString(SaveOptions.DisableFormatting)), Encoding.UTF8.GetBytes(ide.ToString(SaveOptions.DisableFormatting)));
+            });
         }
 
         static List<IDictionary<string, object>> ReadBackNative(CliCall call, IList<NativeWrite> writes)

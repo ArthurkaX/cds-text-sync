@@ -628,7 +628,7 @@ namespace Cts.Agent.Tests
             IDictionary<string, object> replace = null;
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
             {
-                if (method == "project.tree") return Tree(key.Split('/'));
+                if (method == "project.tree") return Tree(key.Split('/'), file);
                 if (method == "objects.replace") { replace = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
                 if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
                 if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
@@ -637,6 +637,35 @@ namespace Cts.Agent.Tests
             Assert.NotNull(replace);
             Assert.Equal(content, replace["xml"]);
             Assert.Empty((IList<string>)result["to_disk"]);
+            Assert.True(!((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>().Any(), Json.Pretty(result));
+        }
+
+        // The IDE made the object at the file's place again, with a guid of its own
+        // (a project's library manager along with a visualization manager): it
+        // keeps that guid, so the file takes it and the IDE reads back what it got (#74).
+        [Fact]
+        public void A_changed_native_object_the_IDE_has_with_another_guid_gives_the_file_that_guid()
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var content = File.ReadAllText(file).Replace("<Single Name=\"AllowEmpty\" Type=\"bool\">False</Single>",
+                "<Single Name=\"AllowEmpty\" Type=\"bool\">True</Single>");
+            File.WriteAllText(file, content);
+            var key = ExportCommand.Relative(view, Path.GetDirectoryName(file)) + "/Task";
+            IDictionary<string, object> replace = null;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(key.Split('/'));
+                if (method == "objects.replace") { replace = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.NotNull(replace);
+            Assert.Equal("11111111-1111-1111-1111-111111111111", replace["guid"]);
+            Assert.Equal("11111111-1111-1111-1111-111111111111", NativeValue((string)replace["xml"], "Guid"));
+            Assert.Equal("11111111-1111-1111-1111-111111111111", NativeValue(File.ReadAllText(file), "Guid"));
+            Assert.Equal(NativeValue(content, "ParentGuid"), NativeValue(File.ReadAllText(file), "ParentGuid"));
             Assert.True(!((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>().Any(), Json.Pretty(result));
         }
 
@@ -691,14 +720,14 @@ namespace Cts.Agent.Tests
             IDictionary<string, object> replace = null;
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
             {
-                if (method == "project.tree") return Tree(new[] { "PLC_Stabur" });
+                if (method == "project.tree") return Tree(new[] { "PLC_Stabur" }, file);
                 if (method == "objects.replace") { replace = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
                 if (method == "objects.export") return NativeReply(replace == null ? before : file, Convert.ToString(((IList<object>)args["guids"])[0]));
                 if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
                 throw new InvalidOperationException("unexpected agent call " + method);
             }));
             Assert.NotNull(replace);
-            Assert.Equal("11111111-1111-1111-1111-111111111111", replace["guid"]);
+            Assert.Equal(NativeValue(content, "Guid"), replace["guid"]);
             Assert.Equal(content, replace["xml"]);
             Assert.False(result.ContainsKey("refused"), Json.Pretty(result));
         }
@@ -793,7 +822,7 @@ namespace Cts.Agent.Tests
             var exports = 0;
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
             {
-                if (method == "project.tree") return Tree(key.Split('/'));
+                if (method == "project.tree") return Tree(key.Split('/'), file);
                 if (method == "objects.replace") return new Dictionary<string, object>();
                 if (method == "objects.export") return NativeReply(++exports == 1 || !taken ? before : stored, Convert.ToString(((IList<object>)args["guids"])[0]));
                 if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
@@ -946,11 +975,7 @@ namespace Cts.Agent.Tests
             Assert.NotEqual(written, raised);
             var baseline = Path.Combine(Fixture, "expected", "PLC_Stabur", "Plc Logic", "Application", "Visualization.xml");
             var key = ExportCommand.Relative(view, Path.GetDirectoryName(file)) + "/Visualization";
-            // The tree names the file's own guid, so the IDE's export of it is the one compared.
-            var tree = Tree(key.Split('/'));
-            IDictionary<string, object> leaf = tree;
-            while (((IList<IDictionary<string, object>>)leaf["children"]).Count > 0) leaf = ((IList<IDictionary<string, object>>)leaf["children"])[0];
-            leaf["guid"] = Regex.Match(written, "Name=\"Guid\" Type=\"System.Guid\">([^<]+)<").Groups[1].Value;
+            var tree = Tree(key.Split('/'), file);
             var calls = new List<string>();
             var exported = false;
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
@@ -961,7 +986,7 @@ namespace Cts.Agent.Tests
                 if (method == "objects.replace") return new Dictionary<string, object>();
                 if (method == "project.export")
                 {
-                    exported = ((IEnumerable<string>)args["guids"]).Contains(Convert.ToString(leaf["guid"]));
+                    exported = ((IEnumerable<string>)args["guids"]).Contains(NativeValue(written, "Guid"));
                     return SnapshotReply(args, raised);
                 }
                 throw new InvalidOperationException("unexpected agent call " + method);
@@ -1026,7 +1051,7 @@ namespace Cts.Agent.Tests
             {
                 if (method == "project.export" && exports++ == 0) { File.Copy(ideSnapshot, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
                 if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
-                if (method == "project.tree") return Tree(key.Split('/'));
+                if (method == "project.tree") return Tree(key.Split('/'), file);
                 if (method == "objects.replace") { replace = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
                 if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
                 throw new InvalidOperationException("unexpected agent call " + method);
@@ -1294,13 +1319,79 @@ namespace Cts.Agent.Tests
                 if (method == "project.tree") return Tree(++trees == 1 ? parent : parent.Concat(new[] { "Made" }).ToArray());
                 if (method == "objects.import") throw new AgentException("bad_params", "An object with the name 'Made' already exists");
                 if (method == "objects.replace") { replaced = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
-                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                // What the IDE made is not the file until the file replaces it.
+                if (method == "objects.export") return NativeReply(replaced == null ? source : file, Convert.ToString(((IList<object>)args["guids"])[0]));
                 if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
                 throw new InvalidOperationException("unexpected agent call " + method);
             }));
             Assert.NotNull(replaced);
             Assert.Equal("11111111-1111-1111-1111-111111111111", replaced["guid"]);
             Assert.Equal("11111111-1111-1111-1111-111111111111", NativeValue(File.ReadAllText(file), "Guid"));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+        }
+
+        // A visualization manager's style image pool the IDE makes along with it
+        // is the file already, and the IDE refuses a write to it: none is made (#74).
+        [Fact]
+        public void A_new_native_object_the_IDE_made_meanwhile_as_its_file_has_it_is_not_written()
+        {
+            var view = ViewFolder.Of(_root);
+            var source = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var file = Path.Combine(Path.GetDirectoryName(source), "Made.xml");
+            File.WriteAllText(file, File.ReadAllText(source).Replace("<Single Name=\"Name\" Type=\"string\">Task</Single>",
+                "<Single Name=\"Name\" Type=\"string\">Made</Single>"));
+            var parent = ExportCommand.Relative(view, Path.GetDirectoryName(source)).Split('/');
+            var trees = 0;
+            var calls = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(++trees == 1 ? parent : parent.Concat(new[] { "Made" }).ToArray());
+                if (method == "objects.import") throw new AgentException("bad_params", "An object with the name 'Made' already exists");
+                if (method == "objects.replace") throw new AgentException("bad_params", "No modification of styles imagepool");
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.DoesNotContain("objects.replace", calls);
+            Assert.Equal("11111111-1111-1111-1111-111111111111", NativeValue(File.ReadAllText(file), "Guid"));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+            Assert.False(result.ContainsKey("partial") && (bool)result["partial"], Json.Pretty(result));
+        }
+
+        // The IDE makes a project's text list and library manager along with its
+        // visualization manager: the file of one at the project root keeps its
+        // empty parent, so the IDE reads back what it was given (#74).
+        [Fact]
+        public void A_new_project_level_object_the_IDE_made_meanwhile_keeps_its_empty_parent()
+        {
+            var view = ViewFolder.Of(_root);
+            var source = Path.Combine(view, "POUs", "GlobalTextList.xml");
+            var file = Path.Combine(view, "POUs", "Made.xml");
+            var text = File.ReadAllText(source);
+            File.WriteAllText(file, text.Replace("<Single Name=\"Name\" Type=\"string\">GlobalTextList</Single>", "<Single Name=\"Name\" Type=\"string\">Made</Single>")
+                .Replace(NativeValue(text, "Guid"), "22222222-2222-2222-2222-222222222222"));
+            Assert.Equal("00000000-0000-0000-0000-000000000000", NativeValue(File.ReadAllText(file), "ParentGuid"));
+            var trees = 0;
+            IDictionary<string, object> replaced = null;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree")
+                {
+                    var tree = Tree(new string[0]);
+                    if (++trees > 1) ((IList<IDictionary<string, object>>)tree["children"]).Add(new Dictionary<string, object>
+                        { { "name", "Made" }, { "guid", "11111111-1111-1111-1111-111111111111" }, { "type", NativeValue(text, "TypeGuid") }, { "children", new List<IDictionary<string, object>>() } });
+                    return tree;
+                }
+                if (method == "objects.import") throw new AgentException("bad_params", "An object with the name 'Made' already exists");
+                if (method == "objects.replace") { replaced = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.export") return NativeReply(replaced == null ? source : file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.NotNull(replaced);
+            Assert.Equal("11111111-1111-1111-1111-111111111111", NativeValue(File.ReadAllText(file), "Guid"));
+            Assert.Equal("00000000-0000-0000-0000-000000000000", NativeValue(File.ReadAllText(file), "ParentGuid"));
             Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
         }
 
@@ -3665,6 +3756,16 @@ namespace Cts.Agent.Tests
                 node = child;
             }
             return root;
+        }
+
+        // The tree with *path* as the object of *file*, by its guid.
+        static IDictionary<string, object> Tree(string[] path, string file)
+        {
+            var tree = Tree(path);
+            IDictionary<string, object> leaf = tree;
+            while (((IList<IDictionary<string, object>>)leaf["children"]).Count > 0) leaf = ((IList<IDictionary<string, object>>)leaf["children"])[0];
+            leaf["guid"] = NativeValue(File.ReadAllText(file), "Guid");
+            return tree;
         }
 
         static IDictionary<string, object> Tree(string[] path)

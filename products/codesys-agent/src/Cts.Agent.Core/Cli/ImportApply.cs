@@ -302,7 +302,15 @@ namespace Cts.Cli
                     // meanwhile; then the object waits for the next sync.
                     if (record.Merged != null && !_work.Stamps.Write(full, (byte[])record.Merged)) continue;
                     var csv = CsvOf(path);
-                    var content = WithRows(csv, File.ReadAllText(full));
+                    // The IDE's object at this place has another guid (a project's library
+                    // manager it made again along with a visualization manager): an object
+                    // keeps its guid, so the file takes the IDE's, as for one made meanwhile.
+                    var text = File.ReadAllText(full);
+                    var own = NativeMetaValue(text, "Guid")?.Trim('{', '}');
+                    var ideGuid = Convert.ToString(record.Guid).Trim().Trim('{', '}');
+                    if (!string.IsNullOrEmpty(own) && Guid.TryParse(ideGuid, out _) && !string.Equals(own, ideGuid, StringComparison.OrdinalIgnoreCase))
+                        text = PlaceNative(_work.Stamps, full, text, own, ideGuid, NativeMetaValue(text, "ParentGuid"));
+                    var content = WithRows(csv, text);
                     var parameters = new Dictionary<string, object> { { "guid", record.Guid }, { "xml", content } };
                     _work.NativeBefore.TryGetValue(Convert.ToString(record.Guid).Trim().Trim('{', '}'), out var before);
                     if (before != null)
@@ -390,7 +398,9 @@ namespace Cts.Cli
                     }
                     reply = new Dictionary<string, object> { { "guid", node.Guid } };
                     content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), node.Guid, parentGuid);
-                    if (!Replace(node.Guid, record.Name, path, csv, content)) return;
+                    // One the IDE made as the file has it needs no write, and some it does not take
+                    // (a visualization manager's style image pool: "No modification of styles imagepool").
+                    if (!IdeHolds(_call, node.Guid, path, content) && !Replace(node.Guid, record.Name, path, csv, content)) return;
                     replaced = true;
                 }
                 var guid = Convert.ToString(reply["guid"]);
