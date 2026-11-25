@@ -168,6 +168,28 @@ namespace Cts.Cli
                     && !record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)
                     && record.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).ToList();
                 _work.CsvRecords = planned.Where(record => record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)).ToList();
+                // A folder's file is Name/.cds-object.xml while objects lie below it and Name.xml while
+                // it is empty, so a side that empties a folder or fills it changes the file, not the
+                // folder: a branch whose folder is empty, the IDE deleting the last objects below one.
+                // One of the two files on disk, the other gone, and a folder the IDE has there: that
+                // folder stays, only the objects below it change; both files go to the sync base.
+                _work.FolderForms = new List<string>();
+                foreach (var container in _work.FolderRecords.ToList())
+                {
+                    var key = FolderKey(container.Path);
+                    var own = _work.NativeRecords.FirstOrDefault(record => string.Equals(record.Path, key + ".xml", StringComparison.OrdinalIgnoreCase));
+                    if (own == null || !_work.IdeNodes.TryGetValue(key, out var node)
+                        || !string.Equals(node.Type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase)) continue;
+                    // What only the IDE changed, sync writes to disk and import leaves, unless --force.
+                    if (!force && (container.Category == "ide_changed" || own.Category == "ide_changed")) continue;
+                    var onDisk = new[] { container.Path, own.Path }.Where(path => File.Exists(ViewFile(path))).ToList();
+                    if (onDisk.Count != 1 || !FolderFileAt(onDisk[0])) continue;
+                    _work.FolderRecords.Remove(container);
+                    _work.NativeRecords.Remove(own);
+                    _work.ForceRecords.Remove(own);
+                    _work.FolderForms.Add(container.Path);
+                    _work.FolderForms.Add(own.Path);
+                }
                 // An empty folder's file is Name.xml, not Name/.cds-object.xml: a new one is made as the other folders are.
                 foreach (var record in _work.NativeRecords.Where(record => record.Category == "added" && NewEmptyFolder(record)).ToList())
                 {
@@ -199,6 +221,11 @@ namespace Cts.Cli
                 var type = File.Exists(full) ? (NativeMetaValue(File.ReadAllText(full), "TypeGuid") ?? "").Trim().Trim('{', '}') : "";
                 return type.Length > 0 && !string.Equals(type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase);
             }
+
+            string ViewFile(string path) => Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
+
+            bool FolderFileAt(string path) => string.Equals((NativeMetaValue(File.ReadAllText(ViewFile(path)), "TypeGuid") ?? "").Trim().Trim('{', '}'),
+                ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase);
 
             bool NewEmptyFolder(CompareRecord record)
             {

@@ -101,7 +101,7 @@ namespace Cts.Cli
                         var objectPath = record.ObjectPath;
                         var ide = objectPath == null ? null : At(_work.IdeObjects, objectPath);
                         // An object the IDE deleted (or moved away) has no text here to keep.
-                        if (objectPath != null && ide == null) continue;
+                        if (record.IdeDeleted || objectPath != null && ide == null) continue;
                         var path = string.IsNullOrEmpty(ide?.File) ? record.Path : ide.File;
                         if (!_work.IdeFiles.TryGetValue(path, out var bytes)) return Refused(_call, _work.Data, "cannot preserve the IDE's text for " + record.Name);
                         preserve[viewRelative == "." ? path : viewRelative.TrimEnd('/') + "/" + path] = bytes;
@@ -553,6 +553,7 @@ namespace Cts.Cli
                     .Concat(_work.FolderRecords.Select(record => record.Path))
                     .Concat(newFolders.Select(item => item.Path))
                     .Concat(_work.EmptiedFolders.Select(key => key + "/.cds-object.xml"))
+                    .Concat(_work.FolderForms)
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 foreach (var partialFile in _work.Writes.Where(pair => unappliedGuids.Contains(pair.Guid)).Select(pair => pair.Item.File))
                     carriedFiles.RemoveAll(path => path.Equals(partialFile, StringComparison.OrdinalIgnoreCase));

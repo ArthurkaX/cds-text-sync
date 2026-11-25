@@ -182,20 +182,8 @@ namespace Cts.Cli
                         }
                         else
                         {
-                            var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
-                            if (!File.Exists(full)) return Refused(_call, _work.Data, path + ": deleted on disk, changed in the IDE; cts import --force deletes it, cts sync keeps the IDE's");
-                            var xml = File.ReadAllText(full);
-                            var name = NativeMetaValue(xml, "Name");
-                            if (!string.Equals(name, Path.GetFileName(key), StringComparison.OrdinalIgnoreCase))
-                                return Refused(_call, _work.Data, "added " + path + ": its object is named '" + name + "', not as the file");
-                            var parent = NativeParentKey(key, xml);
-                            if (parent.Length == 0) record.ParentGuid = "";
-                            else if (_work.IdeByPath.TryGetValue(parent, out var parentGuid)) record.ParentGuid = parentGuid;
-                            else if (NewContainerAt(parent) || _work.FolderRecords.Any(container => container.Category == "added"
-                                && string.Equals(FolderKey(container.Path), parent, StringComparison.OrdinalIgnoreCase)))
-                                record.ParentKey = parent;
-                            else return Refused(_call, _work.Data, "added " + path + ": none of its folders " + (Path.GetDirectoryName(path) ?? "").Replace('\\', '/') + " is in the IDE");
-                            _work.NativeImports.Add(record);
+                            var refusal = PlanNew(record, path, key);
+                            if (refusal != null) return refusal;
                         }
                     }
                     else if (record.Category == "modified")
@@ -208,8 +196,13 @@ namespace Cts.Cli
                     else if (record.Category == "ide_changed" && _work.HasBase && _call.Options.Params.ContainsKey("force")
                         && !path.EndsWith(".cds-object.xml", StringComparison.OrdinalIgnoreCase))
                     {
-                        // --force: the file's object goes back into the IDE as the disk holds it.
-                        if (!found) return Refused(_call, _work.Data, path + ": deleted in the IDE; cts sync removes the file");
+                        // --force: the file's object goes back into the IDE as the disk holds it, made again when the IDE deleted it.
+                        if (!found)
+                        {
+                            var refusal = PlanNew(record, path, key);
+                            if (refusal != null) return refusal;
+                            continue;
+                        }
                         record.Guid = guid; record.HasGuid = true;
                         if (File.Exists(Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar)))) _work.NativeReplaces.Add(record);
                         else _work.NativeDeletes.Add(record);
@@ -226,6 +219,26 @@ namespace Cts.Cli
                         if (take == "ide") _work.NativeIdeTaken.Add(record);
                         else FileConflict(record);
                     }
+                return null;
+            }
+
+            // A native file the IDE has no object for, made from the file below its folder.
+            IDictionary<string, object> PlanNew(CompareRecord record, string path, string key)
+            {
+                var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(full)) return Refused(_call, _work.Data, path + ": deleted on disk, changed in the IDE; cts import --force deletes it, cts sync keeps the IDE's");
+                var xml = File.ReadAllText(full);
+                var name = NativeMetaValue(xml, "Name");
+                if (!string.Equals(name, Path.GetFileName(key), StringComparison.OrdinalIgnoreCase))
+                    return Refused(_call, _work.Data, "added " + path + ": its object is named '" + name + "', not as the file");
+                var parent = NativeParentKey(key, xml);
+                if (parent.Length == 0) record.ParentGuid = "";
+                else if (_work.IdeByPath.TryGetValue(parent, out var parentGuid)) record.ParentGuid = parentGuid;
+                else if (NewContainerAt(parent) || _work.FolderRecords.Any(container => container.Category == "added"
+                    && string.Equals(FolderKey(container.Path), parent, StringComparison.OrdinalIgnoreCase)))
+                    record.ParentKey = parent;
+                else return Refused(_call, _work.Data, "added " + path + ": none of its folders " + (Path.GetDirectoryName(path) ?? "").Replace('\\', '/') + " is in the IDE");
+                _work.NativeImports.Add(record);
                 return null;
             }
 

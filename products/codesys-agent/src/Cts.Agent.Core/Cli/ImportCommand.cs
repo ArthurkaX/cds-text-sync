@@ -174,7 +174,9 @@ namespace Cts.Cli
                         objectKey.Equals(deletedKey, StringComparison.OrdinalIgnoreCase)
                         || objectKey.StartsWith(deletedKey.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase)));
                     // A directory holding no file but folders' own is gone for git (a move leaves it empty on Windows).
+                    // A folder whose Name.xml is on disk stays: the disk has it empty.
                     if (allObjectsDeleted && ideNodes.TryGetValue(key, out var folder) && string.Equals(folder.Type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase)
+                        && !File.Exists(full + ".xml")
                         && (!Directory.Exists(full)
                             || !Directory.GetFiles(full, "*", SearchOption.AllDirectories).Any(file => !Path.GetFileName(file).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase))))
                         candidates.Add(key);

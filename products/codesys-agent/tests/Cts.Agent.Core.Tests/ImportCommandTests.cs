@@ -3590,6 +3590,122 @@ namespace Cts.Agent.Tests
             Assert.False(Directory.Exists(newFolder));
         }
 
+        // A folder's file is Name.xml while it is empty and Name/.cds-object.xml while objects lie
+        // below it: a branch whose folder is empty deletes the objects below it and leaves the
+        // folder, whose two files go to the base as the disk has them.
+        [Fact]
+        public void A_folder_the_disk_empties_stays_in_the_IDE_with_its_file_now_Name_xml()
+        {
+            var view = ViewFolder.Of(_root);
+            var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .First(path => path.Replace('\\', '/').EndsWith("/Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
+            var parent = Path.GetDirectoryName(appContainer);
+            var folderXml = File.ReadAllText(appContainer)
+                .Replace("32d92914-bcb4-4227-b529-32fd90910eca", "44444444-4444-4444-4444-444444444444")
+                .Replace("<Single Name=\"Name\" Type=\"string\">Application</Single>", "<Single Name=\"Name\" Type=\"string\">Visus</Single>")
+                .Replace("639b491f-5557-464c-af91-1471bac9f549", ObjectKinds.FolderType);
+            var newFolder = Path.Combine(parent, "Visus");
+            Directory.CreateDirectory(newFolder);
+            File.WriteAllText(Path.Combine(newFolder, ".cds-object.xml"), folderXml);
+            var screen = Directory.GetFiles(view, "Visualization.xml", SearchOption.AllDirectories).Single();
+            File.WriteAllText(Path.Combine(newFolder, "Visu_One.xml"), File.ReadAllText(screen)
+                .Replace("<Single Name=\"Name\" Type=\"string\">Visualization</Single>", "<Single Name=\"Name\" Type=\"string\">Visu_One</Single>"));
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            Directory.Delete(newFolder, true);
+            File.WriteAllText(Path.Combine(parent, "Visus.xml"), folderXml);
+            var treePath = Path.GetRelativePath(view, parent).Replace('\\', '/').Split('/').Concat(new[] { "Visus", "Visu_One" }).ToArray();
+            var deleted = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return TreeWithGuids(treePath);
+                if (method == "objects.delete") { deleted.Add(Convert.ToString(args["guid"])); return new Dictionary<string, object>(); }
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.True(new[] { "guid-" + treePath.Length }.SequenceEqual(deleted), Json.Pretty(result));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+            var baseFiles = GitRepository.Run(_root, "ls-tree -r --name-only refs/cts/base").Split('\n');
+            Assert.Contains(baseFiles, path => path.EndsWith("/Visus.xml", StringComparison.Ordinal));
+            Assert.DoesNotContain(baseFiles, path => path.Contains("/Visus/"));
+        }
+
+        // The other way: a branch fills the empty folder; the folder stays, its objects are made.
+        [Fact]
+        public void A_folder_the_disk_fills_stays_in_the_IDE_and_gets_its_objects()
+        {
+            var view = ViewFolder.Of(_root);
+            var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .First(path => path.Replace('\\', '/').EndsWith("/Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
+            var parent = Path.GetDirectoryName(appContainer);
+            var folderXml = File.ReadAllText(appContainer)
+                .Replace("32d92914-bcb4-4227-b529-32fd90910eca", "44444444-4444-4444-4444-444444444444")
+                .Replace("<Single Name=\"Name\" Type=\"string\">Application</Single>", "<Single Name=\"Name\" Type=\"string\">Visus</Single>")
+                .Replace("639b491f-5557-464c-af91-1471bac9f549", ObjectKinds.FolderType);
+            File.WriteAllText(Path.Combine(parent, "Visus.xml"), folderXml);
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            File.Delete(Path.Combine(parent, "Visus.xml"));
+            var newFolder = Path.Combine(parent, "Visus");
+            Directory.CreateDirectory(newFolder);
+            File.WriteAllText(Path.Combine(newFolder, ".cds-object.xml"), folderXml);
+            var screen = Directory.GetFiles(view, "Visualization.xml", SearchOption.AllDirectories).Single();
+            var file = Path.Combine(newFolder, "Visu_One.xml");
+            File.WriteAllText(file, File.ReadAllText(screen)
+                .Replace("<Single Name=\"Name\" Type=\"string\">Visualization</Single>", "<Single Name=\"Name\" Type=\"string\">Visu_One</Single>"));
+            var treePath = Path.GetRelativePath(view, parent).Replace('\\', '/').Split('/').Concat(new[] { "Visus", "Other" }).ToArray();
+            var calls = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return TreeWithGuids(treePath);
+                if (method == "objects.import")
+                {
+                    Assert.Equal("guid-" + (treePath.Length - 1), args["parent_guid"]);
+                    return new Dictionary<string, object> { { "guid", "22222222-2222-2222-2222-222222222222" }, { "parent_guid", args["parent_guid"] } };
+                }
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.True(calls.Count(call => call == "objects.import") == 1 && !calls.Contains("objects.delete") && !calls.Contains("objects.create"), string.Join(",", calls) + Json.Pretty(result));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+        }
+
+        // --force makes a native object the IDE deleted again from its file, below its folder.
+        [Fact]
+        public void Force_makes_a_native_object_the_IDE_deleted_again_from_its_file()
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "Visualization.xml", SearchOption.AllDirectories).Single();
+            var document = XDocument.Load(Path.Combine(Fixture, "snapshot.xml"));
+            document.Descendants().First(element => (string)element.Attribute("Name") == "MetaObject"
+                && element.Elements().Any(child => (string)child.Attribute("Name") == "Name" && child.Value == "Visualization")).Parent.Remove();
+            var ideSnapshot = Path.Combine(_root, "ide-deleted.xml");
+            document.Save(ideSnapshot);
+            SyncBase.SaveStamp(StampPath(), _project, "session:changed", GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var parent = ExportCommand.Relative(view, Path.GetDirectoryName(file));
+            var imports = new List<string>();
+            var exports = 0;
+            var result = ImportCommand.Execute(ImportCall(new[] { "--force" }, (method, args) =>
+            {
+                if (method == "project.export")
+                {
+                    if (exports++ == 0) { File.Copy(ideSnapshot, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                    return SnapshotReply(args, File.ReadAllText(file));
+                }
+                if (method == "project.tree") return Tree(parent.Split('/'));
+                if (method == "objects.import")
+                {
+                    imports.Add(Convert.ToString(args["parent_guid"]));
+                    return new Dictionary<string, object> { { "guid", "22222222-2222-2222-2222-222222222222" }, { "parent_guid", args["parent_guid"] } };
+                }
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.True(new[] { "11111111-1111-1111-1111-111111111111" }.SequenceEqual(imports), Json.Pretty(result));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+        }
+
         // The folder no row of the plan names goes all the same: the dry run says so.
         [Fact]
         public void ADryRunNamesTheFolderItsLastObjectDeletionEmpties()
