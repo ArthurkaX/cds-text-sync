@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 4.1.3 (2026-11-25)
+
+_What changes against 4.1.2. Nothing to do on upgrading: run the installer line again._
+
+**Branch switches and import**
+
+- A folder's file is `Name.xml` while the folder is empty and `Name/.cds-object.xml` while objects lie below it. A branch switch that empties or fills a folder now leaves the folder in the IDE and changes only the objects below it; before it deleted the folder (and `cts compare` then said the IDE deleted it), or deleted it and made it again.
+- `cts import --force` makes an `.xml` object the IDE deleted again from its file, as its hint says; before it refused with "deleted in the IDE; cts sync removes the file".
+- A folder an import makes again keeps the guid its file names, so the files below it no longer change after a branch switch. An empty folder's `Name.xml` is imported as a folder; before, one below a visualization stopped the import with "a new container; make it in the IDE".
+- An import no longer rewrites a native file the IDE differs from only in its bookkeeping (a visualization's UniqueIdGenerator, which every import raises), so `cts project update` leaves nothing to commit after a branch switch.
+- Objects the IDE makes along with another (a visualization manager's style image pool, a library manager made again with it) no longer leave an import partial.
+- View files are replaced and deleted with a retry of about 3 s when another program holds them open (an antivirus, a search indexer, a git client), and the error names the file; before, `cts project update` after two quick branch switches stopped with `cause=internal`.
+
+---
+
 ### Version 4.1.2 (2026-11-20)
 
 _What changes against 4.1.0. Nothing to do on upgrading: run the installer line again._
