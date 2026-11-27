@@ -3706,6 +3706,53 @@ namespace Cts.Agent.Tests
             Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
         }
 
+        // A device below a device the IDE deleted: the device above lists one module less, so
+        // the IDE changed its file too. --force makes the one below again and gives the one
+        // above the disk's file; it does not delete the device with all below it.
+        [Fact]
+        public void Force_makes_a_device_the_IDE_deleted_again_and_keeps_the_device_above_it()
+        {
+            var view = ViewFolder.Of(_root);
+            var device = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .Single(path => path.Replace('\\', '/').EndsWith("/PLC_Stabur/.cds-object.xml", StringComparison.Ordinal));
+            var child = Path.Combine(Path.GetDirectoryName(device), "Leds.xml");
+            var childGuid = NativeValue(File.ReadAllText(child), "Guid");
+            var deviceGuid = NativeValue(File.ReadAllText(device), "Guid");
+            var document = XDocument.Load(Path.Combine(Fixture, "snapshot.xml"));
+            document.Descendants().First(element => (string)element.Attribute("Name") == "MetaObject"
+                && element.Elements().Any(item => (string)item.Attribute("Name") == "Guid" && item.Value == childGuid)).Parent.Remove();
+            document.Descendants().Single(element => (string)element.Attribute("Name") == "Modules"
+                && element.Elements().Any(item => item.Value == childGuid)).Elements().Single(item => item.Value == childGuid).Remove();
+            var ideSnapshot = Path.Combine(_root, "ide-deleted.xml");
+            document.Save(ideSnapshot);
+            SyncBase.SaveStamp(StampPath(), _project, "session:changed", GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var calls = new List<string>();
+            var exports = 0;
+            var result = ImportCommand.Execute(ImportCall(new[] { "--force" }, (method, args) =>
+            {
+                if (method == "project.export")
+                {
+                    if (exports++ == 0) { File.Copy(ideSnapshot, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                    return SnapshotReply(args, File.ReadAllText(child), File.ReadAllText(device));
+                }
+                if (method == "project.tree") return Tree(new[] { "PLC_Stabur" }, device);
+                if (method == "objects.import")
+                {
+                    calls.Add("import " + args["parent_guid"]);
+                    return new Dictionary<string, object> { { "guid", childGuid }, { "parent_guid", args["parent_guid"] } };
+                }
+                if (method == "objects.replace") { calls.Add("replace " + args["guid"]); return new Dictionary<string, object>(); }
+                if (method == "objects.delete") { calls.Add("delete " + args["guid"]); return new Dictionary<string, object>(); }
+                if (method == "objects.export")
+                {
+                    var guid = Convert.ToString(((IList<object>)args["guids"])[0]);
+                    return NativeReply(guid == childGuid ? child : device, guid);
+                }
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.True(new[] { "import " + deviceGuid, "replace " + deviceGuid }.SequenceEqual(calls), string.Join(",", calls) + Json.Pretty(result));
+        }
+
         // The folder no row of the plan names goes all the same: the dry run says so.
         [Fact]
         public void ADryRunNamesTheFolderItsLastObjectDeletionEmpties()

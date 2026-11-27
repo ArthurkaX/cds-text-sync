@@ -190,6 +190,16 @@ namespace Cts.Cli
                     _work.FolderForms.Add(container.Path);
                     _work.FolderForms.Add(own.Path);
                 }
+                // --force: a container the IDE changed whose file the disk still has (a device that
+                // lists one module less after the IDE deleted a device below it) gets the disk's
+                // file, after the objects below it are made again; only one the IDE alone has goes.
+                if (force)
+                    foreach (var container in _work.FolderRecords.Where(record => record.Category == "ide_changed" && File.Exists(ViewFile(record.Path))).ToList())
+                    {
+                        _work.FolderRecords.Remove(container);
+                        _work.NativeRecords.Add(container);
+                        _work.ForceRecords.Add(container);
+                    }
                 // An empty folder's file is Name.xml, not Name/.cds-object.xml: a new one is made as the other folders are.
                 foreach (var record in _work.NativeRecords.Where(record => record.Category == "added" && NewEmptyFolder(record)).ToList())
                 {

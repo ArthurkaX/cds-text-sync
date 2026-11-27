@@ -193,8 +193,7 @@ namespace Cts.Cli
                         _work.NativeReplaces.Add(record);
                         if (record.Merged != null) _work.Merged.Add(record.Name);
                     }
-                    else if (record.Category == "ide_changed" && _work.HasBase && _call.Options.Params.ContainsKey("force")
-                        && !path.EndsWith(".cds-object.xml", StringComparison.OrdinalIgnoreCase))
+                    else if (record.Category == "ide_changed" && _work.HasBase && _call.Options.Params.ContainsKey("force"))
                     {
                         // --force: the file's object goes back into the IDE as the disk holds it, made again when the IDE deleted it.
                         if (!found)
